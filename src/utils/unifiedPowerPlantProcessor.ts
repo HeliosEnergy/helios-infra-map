@@ -7,19 +7,22 @@ export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
     // Load Canada data from CSV files
     const largePlantsResponse = await fetch('/data/Power_Plants,_100_MW_or_more.csv');
     const renewablePlantsResponse = await fetch('/data/Renewable_Energy_Power_Plants,_1_MW_or_more.csv');
+    const kazakhstanPlantsResponse = await fetch('/data/Kazakhstan_Power_Plants.csv');
 
     const largePlantsText = await largePlantsResponse.text();
     const renewablePlantsText = await renewablePlantsResponse.text();
+    const kazakhstanPlantsText = await kazakhstanPlantsResponse.text();
 
     // Parse CSV files (now filtered to Canada only)
     const largePlants = parsePowerPlantCSV(largePlantsText, 'large');
     const renewablePlants = parsePowerPlantCSV(renewablePlantsText, 'renewable');
+    const kazakhstanPlants = parsePowerPlantCSV(kazakhstanPlantsText, 'kazakhstan');
 
     // Load US data from EIA JSON using efficient loader
     const usPlants = await loadEIADataEfficiently();
 
     // Combine and aggregate plants
-    const allPlants = [...largePlants, ...renewablePlants, ...usPlants];
+    const allPlants = [...largePlants, ...renewablePlants, ...kazakhstanPlants, ...usPlants];
     const aggregatedPlants = aggregatePowerPlants(allPlants);
 
     return aggregatedPlants;
@@ -30,7 +33,7 @@ export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
 }
 
 // Helper function for parsing and transforming CSV data
-export function parsePowerPlantCSV(csvText: string, type: 'large' | 'renewable'): PowerPlant[] {
+export function parsePowerPlantCSV(csvText: string, type: 'large' | 'renewable' | 'kazakhstan'): PowerPlant[] {
   const lines = csvText.split('\n');
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
   
@@ -58,13 +61,23 @@ export function parsePowerPlantCSV(csvText: string, type: 'large' | 'renewable')
     const capacity = parseFloat(capacityStr.replace(/,/g, '')) || 0;
     
     // Determine energy source based on CSV type
-    const source = type === 'large' 
-      ? mapEnergySource(entry['Primary Energy Source'] || 'Other')
-      : mapEnergySource(entry['Primary Renewable Energy Source'] || 'Other');
+    let source = 'Other';
+    if (type === 'large' || type === 'kazakhstan') {
+      source = mapEnergySource(entry['Primary Energy Source'] || 'Other');
+    } else {
+      source = mapEnergySource(entry['Primary Renewable Energy Source'] || 'Other');
+    }
     
-    // Determine country and skip non-Canada plants
-    const country = entry['Country'] === 'Canada' ? 'CA' : 'US';
-    if (country !== 'CA') continue; // Only process Canada plants from CSV
+    // Determine country and skip non-Canada plants for large/renewable types
+    let country: 'CA' | 'US' | 'KZ' = 'US'; // Default
+    if (entry['Country'] === 'Canada') {
+      country = 'CA';
+    } else if (entry['Country'] === 'Kazakhstan') {
+      country = 'KZ';
+    }
+    
+    // For large/renewable types, only process Canada plants
+    if ((type === 'large' || type === 'renewable') && country !== 'CA') continue;
 
     const plant: PowerPlant = {
       id: `plant-${type}-${i}`,
@@ -74,7 +87,7 @@ export function parsePowerPlantCSV(csvText: string, type: 'large' | 'renewable')
       source: source,
       coordinates: [longitude, latitude],
       country: country,
-      capacityFactor: 100, // Proxy: assume 100% utilization for Canada plants
+      capacityFactor: 100, // Proxy: assume 100% utilization for Canada/Kazakhstan plants
       rawData: entry
     };
 

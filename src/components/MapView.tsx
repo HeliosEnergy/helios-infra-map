@@ -42,27 +42,32 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HER
 
 // Define color mapping for power plant sources
 const POWER_PLANT_COLORS: Record<string, [number, number, number]> = {
-  'hydro': [31, 119, 180],
-  'gas': [255, 127, 14],
-  'wind': [44, 160, 44],
-  'nuclear': [214, 39, 40],
-  'coal': [100, 100, 100],
-  'solar': [255, 215, 0],
-  'oil': [80, 80, 80],
-  'biomass': [150, 150, 50],
-  'battery': [70, 130, 180],
-  'diesel': [120, 120, 120],
-  'geothermal': [200, 100, 50],
-  'tidal': [0, 100, 200],
-  'waste': [120, 90, 40],
-  'biofuel': [160, 130, 50],
-  'other': [148, 103, 189]
+  'hydro': [31, 119, 180],      // Blue (water-based energy)
+  'gas': [255, 127, 14],        // Orange (gas)
+  'wind': [44, 160, 44],        // Green (wind)
+  'nuclear': [214, 39, 40],     // Red (nuclear)
+  'coal': [64, 64, 64],         // Dark gray (coal)
+  'solar': [255, 215, 0],       // Yellow (solar)
+  'oil': [128, 128, 128],       // Medium gray (oil)
+  'biomass': [100, 180, 50],    // Vibrant green (biomass)
+  'battery': [128, 0, 128],     // Purple (battery/storage)
+  'diesel': [192, 192, 192],    // Light gray (diesel)
+  'geothermal': [160, 32, 240], // Violet (geothermal)
+  'tidal': [0, 191, 255],       // Sky blue (tidal)
+  'waste': [139, 69, 19],       // Saddle brown (waste)
+  'biofuel': [210, 180, 140],   // Tan (biofuel)
+  'other': [148, 103, 189]      // Purple (other)
 };
 
 // Orange color for cables
 const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange color
 
-const MapView: React.FC = () => {
+interface MapViewProps {
+  showKazakhstanPlants: boolean;
+  onToggleKazakhstanPlants: () => void;
+}
+
+const MapView: React.FC<MapViewProps> = ({ showKazakhstanPlants, onToggleKazakhstanPlants }) => {
   const { theme } = useTheme();
   const [powerPlants, setPowerPlants] = useState<PowerPlant[]>([]);
   const [wfsCables, setWfsCables] = useState<Cable[]>([]);
@@ -245,10 +250,11 @@ const MapView: React.FC = () => {
      // Existing source filtering
      const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
 
-     // New country filtering
-     const passesCountryFilter =
-       (showCanadianPlants && plant.country === 'CA') ||
-       (showAmericanPlants && plant.country === 'US');
+      // New country filtering
+      const passesCountryFilter =
+        (showCanadianPlants && plant.country === 'CA') ||
+        (showAmericanPlants && plant.country === 'US') ||
+        (showKazakhstanPlants && plant.country === 'KZ');
 
      // New power output range filtering
      const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
@@ -346,11 +352,12 @@ const MapView: React.FC = () => {
 
    const layers = useMemo(() => {
      return [
-       showPowerPlants && new ScatterplotLayer({
-       id: 'power-plants',
-       data: filteredPowerPlants,
-       pickable: true,
-       opacity: 0.8,
+        showPowerPlants && new ScatterplotLayer({
+        id: 'power-plants',
+        data: filteredPowerPlants,
+        pickable: true,
+        cursor: 'pointer',
+        opacity: 0.8,
        filled: true,
        radiusUnits: 'pixels',           // ✅ keep in pixels
        radiusMinPixels: 2,
@@ -440,38 +447,41 @@ const MapView: React.FC = () => {
        )}
 
        <div className="map-container">
-         <DeckGL
-           initialViewState={{
-             longitude: -95,
-             latitude: 55,
-             zoom: 3,
-             pitch: 0,
-             bearing: 0
-           }}
-           controller={true}
-           layers={layers}
-         >
-           <Map
-             mapboxAccessToken={MAPBOX_TOKEN}
-             mapStyle={theme === 'dark' ? "mapbox://styles/mapbox/dark-v10" : "mapbox://styles/mapbox/light-v10"}
-           >
+          <DeckGL
+            initialViewState={{
+              longitude: -95,
+              latitude: 55,
+              zoom: 3,
+              pitch: 0,
+              bearing: 0
+            }}
+            controller={true}
+            layers={layers}
+            getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
+          >
+            <Map
+              mapboxAccessToken={MAPBOX_TOKEN}
+              mapStyle={theme === 'dark' ? "mapbox://styles/mapbox/dark-v10" : "mapbox://styles/mapbox/light-v10"}
+            >
              <NavigationControl position="top-right" />
            </Map>
          </DeckGL>
         </div>
 
         {/* Unified Side Panel */}
-       <SidePanel
-         showPowerPlants={showPowerPlants}
-         showWfsCables={showWfsCables}
-         onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
-         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
-         filteredSources={filteredSources}
-         onToggleSourceFilter={toggleSourceFilter}
-         showCanadianPlants={showCanadianPlants}
-         showAmericanPlants={showAmericanPlants}
-         onToggleCanadianPlants={() => setShowCanadianPlants(!showCanadianPlants)}
-         onToggleAmericanPlants={() => setShowAmericanPlants(!showAmericanPlants)}
+         <SidePanel
+          showPowerPlants={showPowerPlants}
+          showWfsCables={showWfsCables}
+          onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
+          onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
+          filteredSources={filteredSources}
+          onToggleSourceFilter={toggleSourceFilter}
+          showCanadianPlants={showCanadianPlants}
+          showAmericanPlants={showAmericanPlants}
+          showKazakhstanPlants={showKazakhstanPlants}
+          onToggleCanadianPlants={() => setShowCanadianPlants(!showCanadianPlants)}
+          onToggleAmericanPlants={() => setShowAmericanPlants(!showAmericanPlants)}
+          onToggleKazakhstanPlants={onToggleKazakhstanPlants}
          minPowerOutput={minPowerOutput}
          maxPowerOutput={maxPowerOutput}
           onMinPowerOutputChange={setMinPowerOutput}
@@ -534,10 +544,9 @@ const MapView: React.FC = () => {
                 <X size={16} />
               </button>
             )}
-            {((): React.ReactNode => {
-              // Show hovered plant if available (even if we're in persistent mode)
-              // Only show persistent plant when there's no hover
-              const plant = hoverInfo || persistentPlant;
+             {((): React.ReactNode => {
+               // Show persistent plant when in persistent mode, otherwise show hovered plant
+               const plant = isTooltipPersistent ? persistentPlant : hoverInfo;
               if (!plant) return null;
               
               return (

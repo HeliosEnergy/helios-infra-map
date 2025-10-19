@@ -24,8 +24,10 @@ interface SidePanelProps {
   onToggleStatusFilter: (status: string) => void;
   showCanadianPlants: boolean;
   showAmericanPlants: boolean;
+  showKazakhstanPlants: boolean;
   onToggleCanadianPlants: () => void;
   onToggleAmericanPlants: () => void;
+  onToggleKazakhstanPlants: () => void;
   minPowerOutput: number;
   maxPowerOutput: number;
   onMinPowerOutputChange: (value: number) => void;
@@ -89,8 +91,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onToggleStatusFilter,
   showCanadianPlants,
   showAmericanPlants,
+  showKazakhstanPlants,
   onToggleCanadianPlants,
   onToggleAmericanPlants,
+  onToggleKazakhstanPlants,
   minPowerOutput,
   maxPowerOutput,
     onMinPowerOutputChange,
@@ -172,8 +176,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 onToggleWfsCables={onToggleWfsCables}
                 showCanadianPlants={showCanadianPlants}
                 showAmericanPlants={showAmericanPlants}
+                showKazakhstanPlants={showKazakhstanPlants}
                 onToggleCanadianPlants={onToggleCanadianPlants}
                 onToggleAmericanPlants={onToggleAmericanPlants}
+                onToggleKazakhstanPlants={onToggleKazakhstanPlants}
                 allStatuses={allStatuses}
                 filteredStatuses={filteredStatuses}
                 onToggleStatusFilter={onToggleStatusFilter}

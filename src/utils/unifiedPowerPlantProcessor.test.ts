@@ -26,6 +26,9 @@ describe('unifiedPowerPlantProcessor', () => {
 "Plant C","Canada",50.0,-80.0,50.0,"Wind"
 "Plant D","United States",35.0,-110.0,75.5,"Solar"`;
 
+      const mockKazakhstanPlantsCSV = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Energy Source"
+"Plant E","Kazakhstan",43.0,68.0,125.0,"Coal"`;
+
       mockFetch.mockImplementation((url: string) => {
         if (url.includes('Power_Plants,_100_MW_or_more.csv')) {
           return Promise.resolve({
@@ -35,26 +38,30 @@ describe('unifiedPowerPlantProcessor', () => {
           return Promise.resolve({
             text: () => Promise.resolve(mockRenewablePlantsCSV),
           });
+        } else if (url.includes('Kazakhstan_Power_Plants.csv')) {
+          return Promise.resolve({
+            text: () => Promise.resolve(mockKazakhstanPlantsCSV),
+          });
         }
         return Promise.reject(new Error('Unknown URL'));
       });
 
       const result = await loadAndProcessAllPowerPlants();
 
-      expect(result).toHaveLength(4);
+      // Only expecting 4 plants since US plants from large/renewable CSVs are filtered out
+      // and only Canada and Kazakhstan plants are included from those files
+      expect(result).toHaveLength(3);
       expect(result[0].name).toBe('Plant A');
       expect(result[0].country).toBe('CA');
       expect(result[0].source).toBe('hydro');
       expect(result[0].output).toBe(150.5);
-      expect(result[1].name).toBe('Plant B');
-      expect(result[1].country).toBe('US');
-      expect(result[1].source).toBe('gas');
-      expect(result[2].name).toBe('Plant C');
-      expect(result[2].country).toBe('CA');
-      expect(result[2].source).toBe('wind');
-      expect(result[3].name).toBe('Plant D');
-      expect(result[3].country).toBe('US');
-      expect(result[3].source).toBe('solar');
+      expect(result[1].name).toBe('Plant C');
+      expect(result[1].country).toBe('CA');
+      expect(result[1].source).toBe('wind');
+      expect(result[2].name).toBe('Plant E');
+      expect(result[2].country).toBe('KZ');
+      expect(result[2].source).toBe('coal');
+      expect(result[2].output).toBe(125.0);
     });
 
     it('should handle fetch errors gracefully', async () => {
@@ -84,16 +91,31 @@ describe('unifiedPowerPlantProcessor', () => {
 
     it('should parse renewable power plant CSV data correctly', () => {
       const csvText = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Renewable Energy Source"
-"Renewable Plant","United States",40.5,-100.5,50.0,"Wind"`;
+"Renewable Plant","Canada",40.5,-100.5,50.0,"Wind"`;
 
       const result = parsePowerPlantCSV(csvText, 'renewable');
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Renewable Plant');
-      expect(result[0].country).toBe('US');
+      expect(result[0].country).toBe('CA');
       expect(result[0].coordinates).toEqual([-100.5, 40.5]);
       expect(result[0].output).toBe(50.0);
       expect(result[0].source).toBe('wind');
+      expect(result[0].rawData).toBeDefined();
+    });
+
+    it('should parse Kazakhstan power plant CSV data correctly', () => {
+      const csvText = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Energy Source"
+"Kazakhstan Plant","Kazakhstan",43.5,69.5,75.0,"Natural Gas"`;
+
+      const result = parsePowerPlantCSV(csvText, 'kazakhstan');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('Kazakhstan Plant');
+      expect(result[0].country).toBe('KZ');
+      expect(result[0].coordinates).toEqual([69.5, 43.5]);
+      expect(result[0].output).toBe(75.0);
+      expect(result[0].source).toBe('gas');
       expect(result[0].rawData).toBeDefined();
     });
 

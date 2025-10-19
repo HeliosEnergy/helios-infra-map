@@ -46,21 +46,21 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HER
 
 // Define color mapping for power plant sources
 const POWER_PLANT_COLORS: Record<string, [number, number, number]> = {
-  'hydro': [31, 119, 180],
-  'gas': [255, 127, 14],
-  'wind': [44, 160, 44],
-  'nuclear': [214, 39, 40],
-  'coal': [100, 100, 100],
-  'solar': [255, 215, 0],
-  'oil': [80, 80, 80],
-  'biomass': [150, 150, 50],
-  'battery': [70, 130, 180],
-  'diesel': [120, 120, 120],
-  'geothermal': [200, 100, 50],
-  'tidal': [0, 100, 200],
-  'waste': [120, 90, 40],
-  'biofuel': [160, 130, 50],
-  'other': [148, 103, 189]
+  'hydro': [31, 119, 180],      // Blue (water-based energy)
+  'gas': [255, 127, 14],        // Orange (gas)
+  'wind': [44, 160, 44],        // Green (wind)
+  'nuclear': [214, 39, 40],     // Red (nuclear)
+  'coal': [64, 64, 64],         // Dark gray (coal)
+  'solar': [255, 215, 0],       // Yellow (solar)
+  'oil': [128, 128, 128],       // Medium gray (oil)
+  'biomass': [100, 180, 50],    // Vibrant green (biomass)
+  'battery': [128, 0, 128],     // Purple (battery/storage)
+  'diesel': [192, 192, 192],    // Light gray (diesel)
+  'geothermal': [160, 32, 240], // Violet (geothermal)
+  'tidal': [0, 191, 255],       // Sky blue (tidal)
+  'waste': [139, 69, 19],       // Saddle brown (waste)
+  'biofuel': [210, 180, 140],   // Tan (biofuel)
+  'other': [148, 103, 189]      // Purple (other)
 };
 
 // Orange color for cables
@@ -85,6 +85,7 @@ function App() {
   // State for country filtering
   const [showCanadianPlants, setShowCanadianPlants] = useState<boolean>(true);
   const [showAmericanPlants, setShowAmericanPlants] = useState<boolean>(true);
+  const [showKazakhstanPlants, setShowKazakhstanPlants] = useState<boolean>(true);
   // State for proximity filtering
   const [showOnlyNearbyPlants, setShowOnlyNearbyPlants] = useState<boolean>(false);
     // State for proximity distance
@@ -108,8 +109,9 @@ function App() {
     const [capacityWeight, setCapacityWeight] = useState<number>(1);
     const [sizeByOption, setSizeByOption] = useState<SizeByOption>('nameplate_capacity');
     const [showSummerCapacity, setShowSummerCapacity] = useState<boolean>(false);
-     // State for persistent tooltip
-     const [isTooltipPersistent, setIsTooltipPersistent] = useState<boolean>(false);
+      // State for persistent tooltip
+      const [isTooltipPersistent, setIsTooltipPersistent] = useState<boolean>(false);
+      const [persistentPlant, setPersistentPlant] = useState<PowerPlant | null>(null);
      // State for proximity dialog
      const [isProximityDialogOpen, setIsProximityDialogOpen] = useState<boolean>(false);
   // State for status filtering
@@ -241,7 +243,8 @@ function App() {
     // New country filtering
     const passesCountryFilter = 
       (showCanadianPlants && plant.country === 'CA') || 
-      (showAmericanPlants && plant.country === 'US');
+      (showAmericanPlants && plant.country === 'US') ||
+      (showKazakhstanPlants && plant.country === 'KZ');
     
     // New power output range filtering
     const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
@@ -281,7 +284,9 @@ function App() {
       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
       const passesCountryFilter =
         (showCanadianPlants && plant.country === 'CA') ||
-        (showAmericanPlants && plant.country === 'US');
+        (showAmericanPlants && plant.country === 'US') ||
+        (showKazakhstanPlants && plant.country === 'KZ');
+
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
       if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
@@ -297,7 +302,7 @@ function App() {
       }
       return false;
     }).length;
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput]);
 
   // Get the actual list of nearby plants for the dialog (using debounced distance)
   const nearbyPlants = useMemo(() => {
@@ -308,7 +313,9 @@ function App() {
       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
       const passesCountryFilter =
         (showCanadianPlants && plant.country === 'CA') ||
-        (showAmericanPlants && plant.country === 'US');
+        (showAmericanPlants && plant.country === 'US') ||
+        (showKazakhstanPlants && plant.country === 'KZ');
+
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
       if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
@@ -324,7 +331,7 @@ function App() {
       }
       return false;
     });
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput]);
 
   // Count power plants by source
   const powerPlantCounts = useMemo(() => {
@@ -343,6 +350,7 @@ function App() {
       id: 'power-plants',
       data: filteredPowerPlants,
       pickable: true,
+      cursor: 'pointer',
       opacity: 0.8,
       filled: true,
       radiusUnits: 'pixels',           // ✅ keep in pixels
@@ -388,13 +396,7 @@ function App() {
       },
       getFillColor: (d: PowerPlant) =>
         POWER_PLANT_COLORS[d.source] || POWER_PLANT_COLORS.other,
-      onHover: (info: { object?: PowerPlant }) => setHoverInfo(info.object || null),
-       onClick: (info: { object?: PowerPlant }) => {
-         if (info.object) {
-           setHoverInfo(info.object);
-           setIsTooltipPersistent(true);
-         }
-       },
+       onHover: (info: { object?: PowerPlant }) => setHoverInfo(info.object || null),
     }),
     showWfsCables && new PathLayer({
       id: 'wfs-cables',
@@ -437,6 +439,17 @@ function App() {
           }}
           controller={true}
           layers={layers}
+          getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
+          onClick={(info, event) => {
+            if (info.object && info.layer?.id === 'power-plants') {
+              event.stopPropagation();
+              setHoverInfo(info.object);
+              setIsTooltipPersistent(true);
+              setPersistentPlant(info.object);
+              return true;
+            }
+            return false;
+          }}
         >
           <Map
             mapboxAccessToken={MAPBOX_TOKEN}
@@ -456,25 +469,30 @@ function App() {
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
+        allStatuses={allStatuses}
+        filteredStatuses={filteredStatuses}
+        onToggleStatusFilter={toggleStatusFilter}
         showCanadianPlants={showCanadianPlants}
         showAmericanPlants={showAmericanPlants}
+        showKazakhstanPlants={showKazakhstanPlants}
         onToggleCanadianPlants={() => setShowCanadianPlants(!showCanadianPlants)}
         onToggleAmericanPlants={() => setShowAmericanPlants(!showAmericanPlants)}
+        onToggleKazakhstanPlants={() => setShowKazakhstanPlants(!showKazakhstanPlants)}
         minPowerOutput={minPowerOutput}
         maxPowerOutput={maxPowerOutput}
-          onMinPowerOutputChange={setMinPowerOutput}
-          onMaxPowerOutputChange={setMaxPowerOutput}
-          powerRange={powerRange}
-          minCapacityFactor={minCapacityFactor}
-          maxCapacityFactor={maxCapacityFactor}
-          onMinCapacityFactorChange={setMinCapacityFactor}
-          onMaxCapacityFactorChange={setMaxCapacityFactor}
-         showOnlyNearbyPlants={showOnlyNearbyPlants}
-         proximityDistance={proximityDistance}
-         onToggleNearbyPlants={() => setShowOnlyNearbyPlants(!showOnlyNearbyPlants)}
-         onProximityDistanceChange={handleSliderChange}
-         proximityPlantCount={proximityPlantCount}
-         onOpenProximityDialog={() => setIsProximityDialogOpen(true)}
+        onMinPowerOutputChange={setMinPowerOutput}
+        onMaxPowerOutputChange={setMaxPowerOutput}
+        powerRange={powerRange}
+        minCapacityFactor={minCapacityFactor}
+        maxCapacityFactor={maxCapacityFactor}
+        onMinCapacityFactorChange={setMinCapacityFactor}
+        onMaxCapacityFactorChange={setMaxCapacityFactor}
+        showOnlyNearbyPlants={showOnlyNearbyPlants}
+        proximityDistance={proximityDistance}
+        onToggleNearbyPlants={() => setShowOnlyNearbyPlants(!showOnlyNearbyPlants)}
+        onProximityDistanceChange={handleSliderChange}
+        proximityPlantCount={proximityPlantCount}
+        onOpenProximityDialog={() => setIsProximityDialogOpen(true)}
         sizeMultiplier={sizeMultiplier}
         setSizeMultiplier={setSizeMultiplier}
         capacityWeight={capacityWeight}
@@ -486,9 +504,6 @@ function App() {
         powerPlants={powerPlants}
         allSourcesInData={allSourcesInData}
         powerPlantCounts={powerPlantCounts}
-        allStatuses={allStatuses}
-        filteredStatuses={filteredStatuses}
-        onToggleStatusFilter={toggleStatusFilter}
         selectedPlantIds={selectedPlantIds}
         onPlantSelect={handlePlantSelect}
         onPlantDeselect={handlePlantDeselect}
@@ -506,80 +521,89 @@ function App() {
        />
 
         {/* Unified Info Panel */}
-       {hoverInfo && (
-         <div className="info-panel">
-           {/* Close button only when persistent */}
-           {isTooltipPersistent && (
-             <button
-               className="close-button"
-               onClick={() => {
-                 setIsTooltipPersistent(false);
-                 setHoverInfo(null);
-               }}
-               aria-label="Close tooltip"
-             >
-               <X size={16} />
-             </button>
-           )}
-
-            <h3>{hoverInfo.name}</h3>
-            <p>Output: {hoverInfo.outputDisplay}</p>
-            <p>Source: {hoverInfo.source}</p>
-            {hoverInfo.rawData?.technology && (
-              <p style={{ display: 'flex', alignItems: 'center' }}>
-                Technology: {hoverInfo.rawData.technology}
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    backgroundColor: `rgb(${POWER_PLANT_COLORS[hoverInfo.source]?.join(',') || '128,128,128'})`,
-                    marginLeft: '8px'
-                  }}
-                ></span>
-              </p>
+        {(hoverInfo || (isTooltipPersistent && persistentPlant)) && (
+          <div className="info-panel">
+            {/* Close button only when persistent */}
+            {isTooltipPersistent && (
+              <button
+                className="close-button"
+                onClick={() => {
+                  setIsTooltipPersistent(false);
+                  setHoverInfo(null);
+                  setPersistentPlant(null);
+                }}
+                aria-label="Close tooltip"
+              >
+                <X size={16} />
+              </button>
             )}
-            {hoverInfo.netSummerCapacity && <p>Net Summer Capacity: {hoverInfo.netSummerCapacity.toFixed(1)} MW</p>}
-            {hoverInfo.netWinterCapacity && <p>Net Winter Capacity: {hoverInfo.netWinterCapacity.toFixed(1)} MW</p>}
 
-           {/* Additional details from rawData - shown when persistent */}
-           {isTooltipPersistent && hoverInfo.rawData && (
-             <>
-               {hoverInfo.rawData['City (Site Name)'] && <p>City: {hoverInfo.rawData['City (Site Name)']}</p>}
-               {hoverInfo.rawData['State / Province / Territory'] && <p>State/Province: {hoverInfo.rawData['State / Province / Territory']}</p>}
-               {hoverInfo.rawData['County'] && <p>County: {hoverInfo.rawData['County']}</p>}
-               {hoverInfo.rawData['Owner Name (Company)'] && <p>Owner: {hoverInfo.rawData['Owner Name (Company)']}</p>}
-               {hoverInfo.rawData['Operator Name'] && <p>Operator: {hoverInfo.rawData['Operator Name']}</p>}
-               {hoverInfo.rawData['Address'] && <p>Address: {hoverInfo.rawData['Address']}</p>}
-               {hoverInfo.rawData['Zip Code / Postal Code'] && <p>Postal Code: {hoverInfo.rawData['Zip Code / Postal Code']}</p>}
-               <p>Coordinates: {hoverInfo.coordinates[1].toFixed(4)}, {hoverInfo.coordinates[0].toFixed(4)}</p>
-
-               {/* CTA Buttons */}
-               <div className="cta-buttons">
-                 <button
-                   onClick={() => handleGoogleSearch(
-                     hoverInfo.name,
-                     hoverInfo.source,
-                     hoverInfo.rawData?.['Owner Name (Company)']
+             {(() => {
+               const plant = hoverInfo || persistentPlant;
+               if (!plant) return null;
+               return (
+                 <>
+                   <h3>{plant.name}</h3>
+                   <p>Output: {plant.outputDisplay}</p>
+                   <p>Source: {plant.source}</p>
+                   {plant.rawData?.technology && (
+                     <p style={{ display: 'flex', alignItems: 'center' }}>
+                       Technology: {plant.rawData.technology}
+                       <span
+                         style={{
+                           display: 'inline-block',
+                           width: '10px',
+                           height: '10px',
+                           borderRadius: '50%',
+                           backgroundColor: `rgb(${POWER_PLANT_COLORS[plant.source]?.join(',') || '128,128,128'})`,
+                           marginLeft: '8px'
+                         }}
+                       ></span>
+                     </p>
                    )}
-                   aria-label={`Search for ${hoverInfo.name} powerplant on Google`}
-                 >
-                   <Search size={16} />
-                   View on Google
-                 </button>
-                 <button
-                   onClick={() => handleGoogleMaps(hoverInfo.coordinates)}
-                   aria-label={`View ${hoverInfo.name} location on Google Maps`}
-                 >
-                   <MapPin size={16} />
-                   View on Google Maps
-                 </button>
-               </div>
-             </>
-           )}
-         </div>
-       )}
+                   {plant.netSummerCapacity && <p>Net Summer Capacity: {plant.netSummerCapacity.toFixed(1)} MW</p>}
+                   {plant.netWinterCapacity && <p>Net Winter Capacity: {plant.netWinterCapacity.toFixed(1)} MW</p>}
+
+                   {/* Additional details from rawData - shown when persistent */}
+                   {isTooltipPersistent && plant.rawData && (
+                     <>
+                       {plant.rawData['City (Site Name)'] && <p>City: {plant.rawData['City (Site Name)']}</p>}
+                       {plant.rawData['State / Province / Territory'] && <p>State/Province: {plant.rawData['State / Province / Territory']}</p>}
+                       {plant.rawData['County'] && <p>County: {plant.rawData['County']}</p>}
+                       {plant.rawData['Owner Name (Company)'] && <p>Owner: {plant.rawData['Owner Name (Company)']}</p>}
+                       {plant.rawData['Operator Name'] && <p>Operator: {plant.rawData['Operator Name']}</p>}
+                       {plant.rawData['Address'] && <p>Address: {plant.rawData['Address']}</p>}
+                       {plant.rawData['Zip Code / Postal Code'] && <p>Postal Code: {plant.rawData['Zip Code / Postal Code']}</p>}
+                       <p>Coordinates: {plant.coordinates[1].toFixed(4)}, {plant.coordinates[0].toFixed(4)}</p>
+
+                       {/* CTA Buttons */}
+                       <div className="cta-buttons">
+                         <button
+                           onClick={() => handleGoogleSearch(
+                             plant.name,
+                             plant.source,
+                             plant.rawData?.['Owner Name (Company)']
+                           )}
+                           aria-label={`Search for ${plant.name} powerplant on Google`}
+                         >
+                           <Search size={16} />
+                           View on Google
+                         </button>
+                         <button
+                           onClick={() => handleGoogleMaps(plant.coordinates)}
+                           aria-label={`View ${plant.name} location on Google Maps`}
+                         >
+                           <MapPin size={16} />
+                           View on Google Maps
+                         </button>
+                       </div>
+                     </>
+                   )}
+                 </>
+               );
+             })()}
+           </div>
+         )}
     </div>
   );
 }

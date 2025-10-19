@@ -17,8 +17,10 @@ interface LayersFiltersTabProps {
   // Country filtering
   showCanadianPlants: boolean;
   showAmericanPlants: boolean;
+  showKazakhstanPlants: boolean;
   onToggleCanadianPlants: () => void;
   onToggleAmericanPlants: () => void;
+  onToggleKazakhstanPlants: () => void;
 
   // Status filtering
   allStatuses: string[];
@@ -58,8 +60,10 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onToggleWfsCables,
   showCanadianPlants,
   showAmericanPlants,
+  showKazakhstanPlants,
   onToggleCanadianPlants,
   onToggleAmericanPlants,
+  onToggleKazakhstanPlants,
   allStatuses,
   filteredStatuses,
   onToggleStatusFilter,
@@ -186,6 +190,14 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
               aria-label="Toggle American power plants"
             >
               🇺🇸 United States
+            </button>
+            <button
+              className={`country-button ${showKazakhstanPlants ? 'active' : 'inactive'}`}
+              onClick={onToggleKazakhstanPlants}
+              aria-pressed={showKazakhstanPlants}
+              aria-label="Toggle Kazakhstan power plants"
+            >
+              🇰🇿 Kazakhstan
             </button>
           </div>
         </div>

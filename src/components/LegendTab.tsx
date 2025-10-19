@@ -38,24 +38,24 @@ const LegendTab: React.FC<LegendTabProps> = ({
 
   // Power plant colors (matching the main app)
   const POWER_PLANT_COLORS: Record<string, [number, number, number]> = {
-    'hydro': [31, 119, 180],
-    'gas': [255, 127, 14],
-    'wind': [44, 160, 44],
-    'nuclear': [214, 39, 40],
-    'coal': [100, 100, 100],
-    'solar': [255, 215, 0],
-    'oil': [80, 80, 80],
-    'biomass': [150, 150, 50],
-    'battery': [70, 130, 180],
-    'diesel': [120, 120, 120],
-    'geothermal': [200, 100, 50],
-    'tidal': [0, 100, 200],
-    'waste': [120, 90, 40],
-    'biofuel': [160, 130, 50],
-    'other': [148, 103, 189]
-  };
+    'hydro': [31, 119, 180],      // Blue (water-based energy)
+    'gas': [255, 127, 14],        // Orange (gas)
+    'wind': [44, 160, 44],        // Green (wind)
+    'nuclear': [214, 39, 40],     // Red (nuclear)
+    'coal': [64, 64, 64],         // Dark gray (coal)
+    'solar': [255, 215, 0],       // Yellow (solar)
+    'oil': [128, 128, 128],       // Medium gray (oil)
+    'biomass': [100, 180, 50],    // Vibrant green (biomass)
+    'battery': [128, 0, 128],     // Purple (battery/storage)
+    'diesel': [192, 192, 192],    // Light gray (diesel)
+    'geothermal': [160, 32, 240], // Violet (geothermal)
+    'tidal': [0, 191, 255],       // Sky blue (tidal)
+    'waste': [139, 69, 19],       // Saddle brown (waste)
+    'biofuel': [210, 180, 140],   // Tan (biofuel)
+    'other': [148, 103, 189]      // Purple (other)
+};
 
-  const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
+const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
   // Filter and sort sources based on search and sort options
   const processedSources = useMemo(() => {
