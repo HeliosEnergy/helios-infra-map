@@ -285,59 +285,67 @@ const MapView: React.FC<MapViewProps> = ({ showKazakhstanPlants, onToggleKazakhs
    // Get all unique sources from the data for the legend
    const allSourcesInData = Array.from(new Set(powerPlants.map(plant => plant.source))).sort();
 
-   // Calculate count of plants within proximity distance (using debounced value for performance)
-   const proximityPlantCount = useMemo(() => {
-     if (!showOnlyNearbyPlants || !lineIndex) return 0;
+    // Calculate count of plants within proximity distance (using debounced value for performance)
+    const proximityPlantCount = useMemo(() => {
+      if (!showOnlyNearbyPlants || !lineIndex) return 0;
 
-     return powerPlants.filter(plant => {
-       // Check if plant passes other filters first
-       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
-       const passesCountryFilter =
-         (showCanadianPlants && plant.country === 'CA') ||
-         (showAmericanPlants && plant.country === 'US');
-       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
+      return powerPlants.filter(plant => {
+        // Check if plant passes other filters first
+        const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
+        const passesCountryFilter =
+          (showCanadianPlants && plant.country === 'CA') ||
+          (showAmericanPlants && plant.country === 'US') ||
+          (showKazakhstanPlants && plant.country === 'KZ');
+        const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
+        const passesCapacityFactorFilter = minCapacityFactor <= (plant.capacityFactor || 0) && (plant.capacityFactor || 0) <= maxCapacityFactor;
+        const plantStatus = plant.rawData?.statusDescription || 'N/A';
+        const passesStatusFilter = filteredStatuses.has(plantStatus);
 
-       if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
-         return false;
-       }
+        if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter || !passesCapacityFactorFilter || !passesStatusFilter) {
+          return false;
+        }
 
-       // Check proximity to submarine cables only (removed terrestrial links)
-       const nearbySegments = queryLineIndex(lineIndex, plant.coordinates, debouncedDistance);
-       for (const segment of nearbySegments) {
-         if (isPointNearLine(plant.coordinates, segment, debouncedDistance)) {
-           return true;
-         }
-       }
-       return false;
-     }).length;
-   }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, minPowerOutput, maxPowerOutput]);
+        // Check proximity to submarine cables only (removed terrestrial links)
+        const nearbySegments = queryLineIndex(lineIndex, plant.coordinates, debouncedDistance);
+        for (const segment of nearbySegments) {
+          if (isPointNearLine(plant.coordinates, segment, debouncedDistance)) {
+            return true;
+          }
+        }
+        return false;
+      }).length;
+    }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput, minCapacityFactor, maxCapacityFactor, filteredStatuses]);
 
-   // Get the actual list of nearby plants for the dialog (using debounced distance)
-   const nearbyPlants = useMemo(() => {
-     if (!showOnlyNearbyPlants || !lineIndex) return [];
+    // Get the actual list of nearby plants for the dialog (using debounced distance)
+    const nearbyPlants = useMemo(() => {
+      if (!showOnlyNearbyPlants || !lineIndex) return [];
 
-     return powerPlants.filter(plant => {
-       // Check if plant passes other filters first
-       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
-       const passesCountryFilter =
-         (showCanadianPlants && plant.country === 'CA') ||
-         (showAmericanPlants && plant.country === 'US');
-       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
+      return powerPlants.filter(plant => {
+        // Check if plant passes other filters first
+        const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
+        const passesCountryFilter =
+          (showCanadianPlants && plant.country === 'CA') ||
+          (showAmericanPlants && plant.country === 'US') ||
+          (showKazakhstanPlants && plant.country === 'KZ');
+        const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
+        const passesCapacityFactorFilter = minCapacityFactor <= (plant.capacityFactor || 0) && (plant.capacityFactor || 0) <= maxCapacityFactor;
+        const plantStatus = plant.rawData?.statusDescription || 'N/A';
+        const passesStatusFilter = filteredStatuses.has(plantStatus);
 
-       if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
-         return false;
-       }
+        if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter || !passesCapacityFactorFilter || !passesStatusFilter) {
+          return false;
+        }
 
-       // Check proximity to submarine cables only (removed terrestrial links)
-       const nearbySegments = queryLineIndex(lineIndex, plant.coordinates, debouncedDistance);
-       for (const segment of nearbySegments) {
-         if (isPointNearLine(plant.coordinates, segment, debouncedDistance)) {
-           return true;
-         }
-       }
-       return false;
-     });
-   }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, minPowerOutput, maxPowerOutput]);
+        // Check proximity to submarine cables only (removed terrestrial links)
+        const nearbySegments = queryLineIndex(lineIndex, plant.coordinates, debouncedDistance);
+        for (const segment of nearbySegments) {
+          if (isPointNearLine(plant.coordinates, segment, debouncedDistance)) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput, minCapacityFactor, maxCapacityFactor, filteredStatuses]);
 
    // Count power plants by source
    const powerPlantCounts = useMemo(() => {
