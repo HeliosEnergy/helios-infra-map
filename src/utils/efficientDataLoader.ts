@@ -71,19 +71,38 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
     
     // Try to load from fallback local data if available
     try {
-      console.log('Attempting to load fallback data...');
-      const fallbackResponse = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/eia_aggregated_plant_capacity_with_generation.json');
-      if (fallbackResponse.ok) {
-        const rawData = await fallbackResponse.json();
+      console.log('Attempting local fallback: /data/eia_aggregated_plant_capacity.json');
+      const localFallback = await fetch('/data/eia_aggregated_plant_capacity.json');
+      if (localFallback.ok) {
+        const rawData = await localFallback.json();
         const plants = transformEIADataToPowerPlants(rawData);
         cacheEIAData(plants);
-        globalProgressIndicator.update(100, `Loaded ${plants.length} power plants (fallback)`);
+        globalProgressIndicator.update(100, `Loaded ${plants.length} power plants (local fallback)`);
         return plants;
+      } else {
+        console.warn('Local fallback not available, status:', localFallback.status);
       }
     } catch (fallbackError) {
-      console.error('Fallback data loading also failed:', fallbackError);
+      console.warn('Local fallback failed:', fallbackError);
     }
     
+    // Final attempt: S3 JSON with generation
+    try {
+      console.log('Attempting S3 fallback: eia_aggregated_plant_capacity_with_generation.json');
+      const s3Fallback = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/eia_aggregated_plant_capacity_with_generation.json');
+      if (s3Fallback.ok) {
+        const rawData = await s3Fallback.json();
+        const plants = transformEIADataToPowerPlants(rawData);
+        cacheEIAData(plants);
+        globalProgressIndicator.update(100, `Loaded ${plants.length} power plants (S3 fallback)`);
+        return plants;
+      } else {
+        console.warn('S3 fallback not available, status:', s3Fallback.status);
+      }
+    } catch (s3FallbackError) {
+      console.error('S3 fallback failed:', s3FallbackError);
+    }
+
     return []; // Return empty array as fallback
   }
 }
@@ -119,17 +138,10 @@ function transformEIAItemToPowerPlant(item: any): PowerPlant | null {
     coordinates: [longitude, latitude],
     country: 'US',
     capacityFactor: capacityFactor,
+    netSummerCapacity: netSummerCapacity,
+    netWinterCapacity: netWinterCapacity,
     rawData: item
   };
-
-  // Only add optional fields if they exist and are valid numbers
-  if (!isNaN(netSummerCapacity)) {
-    plant.netSummerCapacity = netSummerCapacity;
-  }
-  
-  if (!isNaN(netWinterCapacity)) {
-    plant.netWinterCapacity = netWinterCapacity;
-  }
 
   return plant;
 }

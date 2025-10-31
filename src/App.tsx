@@ -41,6 +41,181 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// Function to get country name from country code
+function getCountryName(countryCode: string): string {
+  const countryNames: Record<string, string> = {
+    'CA': 'Canada',
+    'US': 'United States',
+    'KZ': 'Kazakhstan',
+    'AE': 'United Arab Emirates',
+    'IN': 'India',
+    'KG': 'Kyrgyzstan',
+    'CHN': 'China',
+    'GBR': 'United Kingdom',
+    'BRA': 'Brazil',
+    'FRA': 'France',
+    'DEU': 'Germany',
+    'ESP': 'Spain',
+    'RUS': 'Russia',
+    'JPN': 'Japan',
+    'AUS': 'Australia',
+    'PRT': 'Portugal',
+    'CZE': 'Czech Republic',
+    'ITA': 'Italy',
+    'CHL': 'Chile',
+    'NOR': 'Norway',
+    'MEX': 'Mexico',
+    'VNM': 'Vietnam',
+    'ARG': 'Argentina',
+    'THA': 'Thailand',
+    'POL': 'Poland',
+    'FIN': 'Finland',
+    'IDN': 'Indonesia',
+    'SWE': 'Sweden',
+    'CHE': 'Switzerland',
+    'TUR': 'Turkey',
+    'KOR': 'South Korea',
+    'PHL': 'Philippines',
+    'IRN': 'Iran',
+    'ZAF': 'South Africa',
+    'AUT': 'Austria',
+    'SAU': 'Saudi Arabia',
+    'GRC': 'Greece',
+    'GTM': 'Guatemala',
+    'URY': 'Uruguay',
+    'NLD': 'Netherlands',
+    'BEL': 'Belgium',
+    'ROU': 'Romania',
+    'UKR': 'Ukraine',
+    'PAK': 'Pakistan',
+    'EGY': 'Egypt',
+    'ISR': 'Israel',
+    'IRL': 'Ireland',
+    'DZA': 'Algeria',
+    'BGD': 'Bangladesh',
+    'MYS': 'Malaysia',
+    'LKA': 'Sri Lanka',
+    'DNK': 'Denmark',
+    'MAR': 'Morocco',
+    'VEN': 'Venezuela',
+    'NZL': 'New Zealand',
+    'BGR': 'Bulgaria',
+    'HND': 'Honduras',
+    'TWN': 'Taiwan',
+    'MMR': 'Myanmar',
+    'JOR': 'Jordan',
+    'PER': 'Peru',
+    'PRK': 'North Korea',
+    'SVK': 'Slovakia',
+    'IRQ': 'Iraq',
+    'TUN': 'Tunisia',
+    'CRI': 'Costa Rica',
+    'BOL': 'Bolivia',
+    'COL': 'Colombia',
+    'HRV': 'Croatia',
+    'BLR': 'Belarus',
+    'MUS': 'Mauritius',
+    'KEN': 'Kenya',
+    'ECU': 'Ecuador',
+    'LAO': 'Laos',
+    'ISL': 'Iceland',
+    'BIH': 'Bosnia and Herzegovina',
+    'SDN': 'Sudan',
+    'GEO': 'Georgia',
+    'SYR': 'Syria',
+    'HUN': 'Hungary',
+    'PAN': 'Panama',
+    'EST': 'Estonia',
+    'UZB': 'Uzbekistan',
+    'SLV': 'El Salvador',
+    'NIC': 'Nicaragua',
+    'KHM': 'Cambodia',
+    'ZMB': 'Zambia',
+    'PNG': 'Papua New Guinea',
+    'DOM': 'Dominican Republic',
+    'COD': 'Democratic Republic of the Congo',
+    'SGP': 'Singapore',
+    'NPL': 'Nepal',
+    'CUB': 'Cuba',
+    'AZE': 'Azerbaijan',
+    'AGO': 'Angola',
+    'NGA': 'Nigeria',
+    'NAM': 'Namibia',
+    'ETH': 'Ethiopia',
+    'SRB': 'Serbia',
+    'QAT': 'Qatar',
+    'OMN': 'Oman',
+    'MKD': 'North Macedonia',
+    'MDG': 'Madagascar',
+    'LBY': 'Libya',
+    'FJI': 'Fiji',
+    'UGA': 'Uganda',
+    'TZA': 'Tanzania',
+    'RWA': 'Rwanda',
+    'TJK': 'Tajikistan',
+    'SEN': 'Senegal',
+    'JAM': 'Jamaica',
+    'KWT': 'Kuwait',
+    'GIN': 'Guinea',
+    'AFG': 'Afghanistan',
+    'SVN': 'Slovenia',
+    'MNG': 'Mongolia',
+    'COG': 'Republic of the Congo',
+    'CMR': 'Cameroon',
+    'CIV': 'Ivory Coast',
+    'BHR': 'Bahrain',
+    'ARM': 'Armenia',
+    'ALB': 'Albania',
+    'YEM': 'Yemen',
+    'TKM': 'Turkmenistan',
+    'NER': 'Niger',
+    'MRT': 'Mauritania',
+    'LBN': 'Lebanon',
+    'BFA': 'Burkina Faso',
+    'TTO': 'Trinidad and Tobago',
+    'SWZ': 'Eswatini',
+    'MDA': 'Moldova',
+    'LTU': 'Lithuania',
+    'GUF': 'French Guiana',
+    'GHA': 'Ghana',
+    'GAB': 'Gabon',
+    'MWI': 'Malawi',
+    'LVA': 'Latvia',
+    'GUY': 'Guyana',
+    'BTN': 'Bhutan',
+    'MLI': 'Mali',
+    'CPV': 'Cape Verde',
+    'BRN': 'Brunei',
+    'BDI': 'Burundi',
+    'TGO': 'Togo',
+    'SLE': 'Sierra Leone',
+    'PRY': 'Paraguay',
+    'MOZ': 'Mozambique',
+    'MNE': 'Montenegro',
+    'GNQ': 'Equatorial Guinea',
+    'CYP': 'Cyprus',
+    'ZWE': 'Zimbabwe',
+    'LUX': 'Luxembourg',
+    'LBR': 'Liberia',
+    'KOS': 'Kosovo',
+    'GMB': 'Gambia',
+    'ERI': 'Eritrea',
+    'CAF': 'Central African Republic',
+    'BWA': 'Botswana',
+    'BEN': 'Benin',
+    'ATA': 'Antarctica',
+    'SUR': 'Suriname',
+    'PSE': 'Palestine',
+    'LSO': 'Lesotho',
+    'LCA': 'Saint Lucia',
+    'GNB': 'Guinea-Bissau',
+    'ESH': 'Western Sahara',
+    'DJI': 'Djibouti'
+  };
+  
+  return countryNames[countryCode] || countryCode;
+}
+
 // Mapbox token from environment variables
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HERE';
 
@@ -82,10 +257,17 @@ function App() {
   // State for capacity factor range filtering (0% to 100%)
   const [minCapacityFactor, setMinCapacityFactor] = useState<number>(0);
   const [maxCapacityFactor, setMaxCapacityFactor] = useState<number>(100);
-  // State for country filtering
+  // State for country filtering - Dynamic approach
   const [showCanadianPlants, setShowCanadianPlants] = useState<boolean>(true);
   const [showAmericanPlants, setShowAmericanPlants] = useState<boolean>(true);
   const [showKazakhstanPlants, setShowKazakhstanPlants] = useState<boolean>(true);
+  const [showUaePlants, setShowUaePlants] = useState<boolean>(true);
+  const [showIndiaPlants, setShowIndiaPlants] = useState<boolean>(true);
+  const [showKyrgyzstanPlants, setShowKyrgyzstanPlants] = useState<boolean>(true);
+  
+  // Dynamic country filtering - use a Set to track enabled countries
+  const [enabledCountries, setEnabledCountries] = useState<Set<string>>(new Set());
+  const [allCountries, setAllCountries] = useState<Array<{code: string, name: string, count: number}>>([]);
   // State for proximity filtering
   const [showOnlyNearbyPlants, setShowOnlyNearbyPlants] = useState<boolean>(false);
     // State for proximity distance
@@ -133,7 +315,7 @@ function App() {
       return newSet;
     });
   };
- // Toggle status filter
+  // Toggle status filter
  const toggleStatusFilter = (status: string) => {
   setFilteredStatuses(prev => {
     const newSet = new Set(prev);
@@ -145,6 +327,19 @@ function App() {
     return newSet;
   });
 };
+
+  // Toggle country filter
+  const toggleCountryFilter = (countryCode: string) => {
+    setEnabledCountries(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(countryCode)) {
+        newSet.delete(countryCode);
+      } else {
+        newSet.add(countryCode);
+      }
+      return newSet;
+    });
+  };
 
   // Handlers for plant search and selection
   const handlePlantSelect = (plantId: string) => {
@@ -225,6 +420,34 @@ function App() {
         const sortedStatuses = Array.from(statuses).sort();
         setAllStatuses(sortedStatuses);
         setFilteredStatuses(new Set(sortedStatuses));
+
+        // Extract and set all countries with counts and used capacity
+        const countryData: Record<string, {count: number, usedCapacity: number}> = {};
+        powerPlantData.forEach(plant => {
+          if (!countryData[plant.country]) {
+            countryData[plant.country] = { count: 0, usedCapacity: 0 };
+          }
+          countryData[plant.country].count += 1;
+          
+          // Add used capacity if available (for global database plants)
+          if (plant.usedCapacity && plant.country !== 'US' && plant.country !== 'CA') {
+            countryData[plant.country].usedCapacity += plant.usedCapacity;
+          }
+        });
+        
+        const countriesList = Object.entries(countryData)
+          .map(([code, data]) => ({
+            code,
+            name: getCountryName(code),
+            count: data.count,
+            usedCapacity: data.usedCapacity > 0 ? data.usedCapacity : undefined
+          }))
+          .sort((a, b) => b.count - a.count); // Sort by count descending
+        
+        setAllCountries(countriesList);
+        
+        // Initialize enabled countries with US and Canada only (default)
+        setEnabledCountries(new Set(['US', 'CA']));
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -240,11 +463,8 @@ function App() {
     // Existing source filtering
     const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
     
-    // New country filtering
-    const passesCountryFilter = 
-      (showCanadianPlants && plant.country === 'CA') || 
-      (showAmericanPlants && plant.country === 'US') ||
-      (showKazakhstanPlants && plant.country === 'KZ');
+    // Dynamic country filtering
+    const passesCountryFilter = enabledCountries.has(plant.country);
     
     // New power output range filtering
     const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
@@ -283,9 +503,7 @@ function App() {
       // Check if plant passes other filters first
       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
       const passesCountryFilter =
-        (showCanadianPlants && plant.country === 'CA') ||
-        (showAmericanPlants && plant.country === 'US') ||
-        (showKazakhstanPlants && plant.country === 'KZ');
+    enabledCountries.has(plant.country);
 
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
@@ -302,7 +520,7 @@ function App() {
       }
       return false;
     }).length;
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput]);
 
   // Get the actual list of nearby plants for the dialog (using debounced distance)
   const nearbyPlants = useMemo(() => {
@@ -312,9 +530,7 @@ function App() {
       // Check if plant passes other filters first
       const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
       const passesCountryFilter =
-        (showCanadianPlants && plant.country === 'CA') ||
-        (showAmericanPlants && plant.country === 'US') ||
-        (showKazakhstanPlants && plant.country === 'KZ');
+    enabledCountries.has(plant.country);
 
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
@@ -331,7 +547,7 @@ function App() {
       }
       return false;
     });
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput]);
 
   // Count power plants by source
   const powerPlantCounts = useMemo(() => {
@@ -475,9 +691,18 @@ function App() {
         showCanadianPlants={showCanadianPlants}
         showAmericanPlants={showAmericanPlants}
         showKazakhstanPlants={showKazakhstanPlants}
+        showUaePlants={showUaePlants}
+        showIndiaPlants={showIndiaPlants}
+        showKyrgyzstanPlants={showKyrgyzstanPlants}
         onToggleCanadianPlants={() => setShowCanadianPlants(!showCanadianPlants)}
         onToggleAmericanPlants={() => setShowAmericanPlants(!showAmericanPlants)}
         onToggleKazakhstanPlants={() => setShowKazakhstanPlants(!showKazakhstanPlants)}
+        onToggleUaePlants={() => setShowUaePlants(!showUaePlants)}
+        onToggleIndiaPlants={() => setShowIndiaPlants(!showIndiaPlants)}
+        onToggleKyrgyzstanPlants={() => setShowKyrgyzstanPlants(!showKyrgyzstanPlants)}
+        allCountries={allCountries}
+        enabledCountries={enabledCountries}
+        onToggleCountryFilter={toggleCountryFilter}
         minPowerOutput={minPowerOutput}
         maxPowerOutput={maxPowerOutput}
         onMinPowerOutputChange={setMinPowerOutput}
@@ -546,6 +771,10 @@ function App() {
                    <h3>{plant.name}</h3>
                    <p>Output: {plant.outputDisplay}</p>
                    <p>Source: {plant.source}</p>
+                   {/* Show used capacity for global database plants (India, Kazakhstan, Kyrgyzstan, UAE) */}
+                   {plant.usedCapacity && (plant.country === 'IN' || plant.country === 'KZ' || plant.country === 'KG' || plant.country === 'AE') && (
+                     <p>Used Capacity: {plant.usedCapacity.toFixed(1)} MW</p>
+                   )}
                    {plant.rawData?.technology && (
                      <p style={{ display: 'flex', alignItems: 'center' }}>
                        Technology: {plant.rawData.technology}

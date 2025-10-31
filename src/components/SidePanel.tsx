@@ -25,9 +25,20 @@ interface SidePanelProps {
   showCanadianPlants: boolean;
   showAmericanPlants: boolean;
   showKazakhstanPlants: boolean;
+  showUaePlants: boolean;
+  showIndiaPlants: boolean;
+  showKyrgyzstanPlants: boolean;
   onToggleCanadianPlants: () => void;
   onToggleAmericanPlants: () => void;
   onToggleKazakhstanPlants: () => void;
+  onToggleUaePlants: () => void;
+  onToggleIndiaPlants: () => void;
+  onToggleKyrgyzstanPlants: () => void;
+  
+  // Dynamic country filtering
+  allCountries: Array<{code: string, name: string, count: number, usedCapacity?: number}>;
+  enabledCountries: Set<string>;
+  onToggleCountryFilter: (countryCode: string) => void;
   minPowerOutput: number;
   maxPowerOutput: number;
   onMinPowerOutputChange: (value: number) => void;
@@ -92,9 +103,20 @@ const SidePanel: React.FC<SidePanelProps> = ({
   showCanadianPlants,
   showAmericanPlants,
   showKazakhstanPlants,
+  showUaePlants,
+  showIndiaPlants,
+  showKyrgyzstanPlants,
   onToggleCanadianPlants,
   onToggleAmericanPlants,
   onToggleKazakhstanPlants,
+  onToggleUaePlants,
+  onToggleIndiaPlants,
+  onToggleKyrgyzstanPlants,
+  
+  // Dynamic country filtering
+  allCountries,
+  enabledCountries,
+  onToggleCountryFilter,
   minPowerOutput,
   maxPowerOutput,
     onMinPowerOutputChange,
@@ -177,9 +199,18 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 showCanadianPlants={showCanadianPlants}
                 showAmericanPlants={showAmericanPlants}
                 showKazakhstanPlants={showKazakhstanPlants}
+                showUaePlants={showUaePlants}
+                showIndiaPlants={showIndiaPlants}
+                showKyrgyzstanPlants={showKyrgyzstanPlants}
+                allCountries={allCountries}
+                enabledCountries={enabledCountries}
+                onToggleCountryFilter={onToggleCountryFilter}
                 onToggleCanadianPlants={onToggleCanadianPlants}
                 onToggleAmericanPlants={onToggleAmericanPlants}
                 onToggleKazakhstanPlants={onToggleKazakhstanPlants}
+                onToggleUaePlants={onToggleUaePlants}
+                onToggleIndiaPlants={onToggleIndiaPlants}
+                onToggleKyrgyzstanPlants={onToggleKyrgyzstanPlants}
                 allStatuses={allStatuses}
                 filteredStatuses={filteredStatuses}
                 onToggleStatusFilter={onToggleStatusFilter}
@@ -252,6 +283,16 @@ const SidePanel: React.FC<SidePanelProps> = ({
                   className="clear-cache-btn"
                 >
                   Clear Cable Cache
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('eia-power-plants-v1');
+                    window.location.reload(); // Reload to fetch fresh EIA data
+                  }}
+                  className="clear-cache-btn"
+                  style={{ marginTop: '8px' }}
+                >
+                  Clear EIA Cache
                 </button>
               </div>
             </div>
