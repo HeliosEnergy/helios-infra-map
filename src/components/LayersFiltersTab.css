@@ -101,12 +101,12 @@
 
 /* Country Buttons */
 .country-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
 .country-button {
-  flex: 1;
   padding: 8px 12px;
   border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 6px;
@@ -445,14 +445,178 @@
   100% { transform: scale(1); }
 }
 
+/* Country Dropdown */
+.country-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.2s ease;
+}
+
+.dropdown-trigger:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.dropdown-trigger:focus {
+  outline: 2px solid #007bff;
+  outline-offset: -2px;
+}
+
+.dark .dropdown-trigger {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ccc;
+}
+
+.dark .dropdown-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.dropdown-arrow {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin-top: 2px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dark .dropdown-content {
+  background: rgba(30, 30, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.search-box {
+  padding: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.dark .search-box {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  background: white;
+  color: #333;
+  font-size: 12px;
+}
+
+.search-input:focus {
+  outline: 2px solid #007bff;
+  outline-offset: -2px;
+}
+
+.dark .search-input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ccc;
+}
+
+.country-list {
+  padding: 4px 0;
+}
+
+.country-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 13px;
+}
+
+.country-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark .country-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.country-item input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.country-flag {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.country-name {
+  flex: 1;
+  color: #333;
+  font-weight: 500;
+}
+
+.dark .country-name {
+  color: #ccc;
+}
+
+.country-count {
+  color: #666;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.dark .country-count {
+  color: #aaa;
+}
+
+.country-capacity {
+  color: #059669;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.dark .country-capacity {
+  color: #10b981;
+}
+
 /* Responsive Design */
+@media (max-width: 1024px) {
+  .country-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .layers-filters-tab {
     gap: 20px;
   }
 
   .country-buttons {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .range-inputs {

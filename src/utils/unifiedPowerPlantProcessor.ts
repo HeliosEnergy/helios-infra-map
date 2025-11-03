@@ -1,29 +1,128 @@
 import type { PowerPlant } from '../models/PowerPlant';
 import { loadEIADataEfficiently } from './efficientDataLoader';
 
-// Function to load and process power plants: Canada from CSV, US from EIA JSON
+// Function to load and process power plants: Canada from CSV, US from EIA JSON, Global DB for Kazakhstan
 export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
   try {
+    console.log('Starting data loading...');
+    
     // Load Canada data from CSV files
+    console.log('Loading Canada data...');
     const largePlantsResponse = await fetch('/data/Power_Plants,_100_MW_or_more.csv');
     const renewablePlantsResponse = await fetch('/data/Renewable_Energy_Power_Plants,_1_MW_or_more.csv');
-    const kazakhstanPlantsResponse = await fetch('/data/Kazakhstan_Power_Plants.csv');
+    
+    console.log('Canada data responses:', {
+      large: largePlantsResponse.status,
+      renewable: renewablePlantsResponse.status
+    });
 
     const largePlantsText = await largePlantsResponse.text();
     const renewablePlantsText = await renewablePlantsResponse.text();
-    const kazakhstanPlantsText = await kazakhstanPlantsResponse.text();
 
     // Parse CSV files (now filtered to Canada only)
     const largePlants = parsePowerPlantCSV(largePlantsText, 'large');
     const renewablePlants = parsePowerPlantCSV(renewablePlantsText, 'renewable');
-    const kazakhstanPlants = parsePowerPlantCSV(kazakhstanPlantsText, 'kazakhstan');
+    
+    console.log('Parsed plants:', {
+      large: largePlants.length,
+      renewable: renewablePlants.length
+    });
+
+    // Try to load global database from AWS S3 (with error handling)
+    let globalKazakhstanPlants: PowerPlant[] = [];
+    try {
+      console.log('Loading global database from S3...');
+      const globalPlantsResponse = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/global_power_plant_database.csv');
+      console.log('S3 response status:', globalPlantsResponse.status);
+      
+      if (globalPlantsResponse.ok) {
+        const globalPlantsText = await globalPlantsResponse.text();
+        globalKazakhstanPlants = parseGlobalPowerPlantCSV(globalPlantsText);
+               const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
+               const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
+               const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
+               const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
+               console.log('Global plants loaded:', globalKazakhstanPlants.length);
+               console.log('Kazakhstan plants:', kazakhstanCount);
+               console.log('UAE plants:', uaeCount);
+               console.log('India plants:', indiaCount);
+               console.log('Kyrgyzstan plants:', kyrgyzstanCount);
+      } else {
+        console.warn('Failed to load global database from S3, trying local file...');
+        // Fallback to local file
+        try {
+          const localResponse = await fetch('/data/global_power_plant_database.csv');
+          if (localResponse.ok) {
+            const localPlantsText = await localResponse.text();
+            globalKazakhstanPlants = parseGlobalPowerPlantCSV(localPlantsText);
+            const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
+            const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
+            const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
+            const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
+            console.log('Global plants loaded from local file:', globalKazakhstanPlants.length);
+            console.log('Kazakhstan plants:', kazakhstanCount);
+            console.log('UAE plants:', uaeCount);
+            console.log('India plants:', indiaCount);
+            console.log('Kyrgyzstan plants:', kyrgyzstanCount);
+          } else {
+            console.warn('Failed to load global database from local file as well');
+          }
+        } catch (localError) {
+          console.warn('Error loading global database from local file:', localError);
+        }
+      }
+    } catch (s3Error) {
+      console.warn('Error loading global database from S3, trying local file...', s3Error);
+      // Fallback to local file
+      try {
+        const localResponse = await fetch('/data/global_power_plant_database.csv');
+        if (localResponse.ok) {
+          const localPlantsText = await localResponse.text();
+          globalKazakhstanPlants = parseGlobalPowerPlantCSV(localPlantsText);
+          const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
+          const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
+          const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
+          const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
+          console.log('Global plants loaded from local file:', globalKazakhstanPlants.length);
+          console.log('Kazakhstan plants:', kazakhstanCount);
+          console.log('UAE plants:', uaeCount);
+          console.log('India plants:', indiaCount);
+          console.log('Kyrgyzstan plants:', kyrgyzstanCount);
+        } else {
+          console.warn('Failed to load global database from local file as well');
+        }
+      } catch (localError) {
+        console.warn('Error loading global database from local file:', localError);
+      }
+    }
+
+    // Use global database for all countries EXCEPT US and CA (US from EIA, CA from CSVs)
+    if (Array.isArray(globalKazakhstanPlants) && globalKazakhstanPlants.length > 0) {
+      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US' && p.country !== 'CA');
+    }
 
     // Load US data from EIA JSON using efficient loader
+    console.log('Loading US data...');
     const usPlants = await loadEIADataEfficiently();
+    console.log('US plants loaded:', usPlants.length);
 
-    // Combine and aggregate plants
-    const allPlants = [...largePlants, ...renewablePlants, ...kazakhstanPlants, ...usPlants];
+    // Combine and aggregate plants (ensure all arrays are defined)
+    const allPlants = [
+      ...(largePlants || []), 
+      ...(renewablePlants || []), 
+      ...(globalKazakhstanPlants || []), 
+      ...(usPlants || [])
+    ];
+    console.log('Total plants before aggregation:', allPlants.length);
+    
+    if (allPlants.length === 0) {
+      console.warn('No plants loaded from any source');
+      return [];
+    }
+    
     const aggregatedPlants = aggregatePowerPlants(allPlants);
+    console.log('Total plants after aggregation:', aggregatedPlants.length);
+    
 
     return aggregatedPlants;
   } catch (error) {
@@ -166,6 +265,12 @@ export function aggregatePowerPlants(plants: PowerPlant[]): PowerPlant[] {
   const plantMap = new Map<string, PowerPlant>();
 
   for (const plant of plants) {
+    // Skip plants with invalid coordinates
+    if (!plant.coordinates || !Array.isArray(plant.coordinates) || plant.coordinates.length !== 2) {
+      console.warn('Skipping plant with invalid coordinates:', plant.name, plant.coordinates);
+      continue;
+    }
+    
     // Create a unique key based on name, coordinates, and country
     const key = `${plant.name.toLowerCase()}-${plant.coordinates[0].toFixed(4)}-${plant.coordinates[1].toFixed(4)}-${plant.country}`;
 
@@ -293,4 +398,263 @@ function mapEnergySource(source: string): string {
 
   // Default to 'other' if no match found
   return 'other';
+}
+
+// New parser for global power plant database with capacity calculations
+export function parseGlobalPowerPlantCSV(csvText: string): PowerPlant[] {
+  const lines = csvText.split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  
+  const plants: PowerPlant[] = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const row = parseCsvRow(line);
+    if (row.length < headers.length) continue;
+    
+    // Create a map of header to value
+    const entry: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      entry[header] = row[index] ? row[index].trim().replace(/^"|"$/g, '') : '';
+    });
+    
+           // Process all countries from global database (skip header row)
+           if (entry['country'] === 'country' || !entry['country']) continue;
+    
+    
+    
+    // Extract coordinates
+    const latitude = parseFloat(entry['latitude'] || '0');
+    const longitude = parseFloat(entry['longitude'] || '0');
+    
+    // Skip if no valid coordinates
+    if (latitude === 0 && longitude === 0) continue;
+    
+    // Extract capacity (installed power)
+    const capacityStr = entry['capacity_mw'] || '0';
+    const capacity = parseFloat(capacityStr.replace(/,/g, '')) || 0;
+    
+    // Extract estimated generation (actual output) - use generation_gwh_2017 if available, otherwise estimated_generation_gwh_2017
+    const generationStr = entry['generation_gwh_2017'] || entry['estimated_generation_gwh_2017'] || '0';
+    const generation = parseFloat(generationStr.replace(/,/g, '')) || 0;
+    
+    // Calculate used capacity: generation_gwh * 1000 / 8760 (since 1 year = 8760 hours)
+    const usedCapacity = generation > 0 ? (generation * 1000) / 8760 : 0;
+    
+    // Map energy source
+    const source = mapEnergySource(entry['primary_fuel'] || 'Other');
+    
+           // Determine country code - map from 3-letter codes to our internal codes
+           const countryCode = mapCountryCode(entry['country']);
+    
+    const plant: PowerPlant = {
+      id: `global-${entry['country'].toLowerCase()}-${entry['gppd_idnr'] || i}`,
+      name: entry['name'] || 'Unknown Plant',
+      output: capacity,
+      outputDisplay: `${capacity.toFixed(1)} MW`,
+      source,
+      coordinates: [longitude, latitude],
+      country: countryCode as any,
+      // Add new capacity fields
+      capacityMW: capacity,
+      usedCapacity: usedCapacity,
+      generationGWh: generation,
+      rawData: {
+        // Store additional calculated metrics
+        usedCapacity: usedCapacity.toString(),
+        generation: generation.toString(),
+        primaryFuel: entry['primary_fuel'],
+        otherFuels: [entry['other_fuel1'], entry['other_fuel2'], entry['other_fuel3']].filter(Boolean).join(', '),
+        commissioningYear: entry['commissioning_year'],
+        owner: entry['owner'],
+        source: entry['source'],
+        url: entry['url']
+      }
+    };
+    
+    plants.push(plant);
+    
+  }
+  
+  return plants;
+}
+
+// Function to map 3-letter country codes to our internal country codes
+function mapCountryCode(countryCode: string): string {
+  const countryMap: Record<string, string> = {
+    // Existing mappings
+    'KAZ': 'KZ',
+    'ARE': 'AE', 
+    'IND': 'IN',
+    'KGZ': 'KG',
+    'CAN': 'CA',
+    'USA': 'US',
+    
+    // Major countries with many power plants
+    'CHN': 'CHN', // China
+    'GBR': 'GBR', // United Kingdom
+    'BRA': 'BRA', // Brazil
+    'FRA': 'FRA', // France
+    'DEU': 'DEU', // Germany
+    'ESP': 'ESP', // Spain
+    'RUS': 'RUS', // Russia
+    'JPN': 'JPN', // Japan
+    'AUS': 'AUS', // Australia
+    'PRT': 'PRT', // Portugal
+    'CZE': 'CZE', // Czech Republic
+    'ITA': 'ITA', // Italy
+    'CHL': 'CHL', // Chile
+    'NOR': 'NOR', // Norway
+    'MEX': 'MEX', // Mexico
+    'VNM': 'VNM', // Vietnam
+    'ARG': 'ARG', // Argentina
+    'THA': 'THA', // Thailand
+    'POL': 'POL', // Poland
+    'FIN': 'FIN', // Finland
+    'IDN': 'IDN', // Indonesia
+    'SWE': 'SWE', // Sweden
+    'CHE': 'CHE', // Switzerland
+    'TUR': 'TUR', // Turkey
+    'KOR': 'KOR', // South Korea
+    'PHL': 'PHL', // Philippines
+    'IRN': 'IRN', // Iran
+    'ZAF': 'ZAF', // South Africa
+    'AUT': 'AUT', // Austria
+    'SAU': 'SAU', // Saudi Arabia
+    'GRC': 'GRC', // Greece
+    'GTM': 'GTM', // Guatemala
+    'URY': 'URY', // Uruguay
+    'NLD': 'NLD', // Netherlands
+    'BEL': 'BEL', // Belgium
+    'ROU': 'ROU', // Romania
+    'UKR': 'UKR', // Ukraine
+    'PAK': 'PAK', // Pakistan
+    'EGY': 'EGY', // Egypt
+    'ISR': 'ISR', // Israel
+    'IRL': 'IRL', // Ireland
+    'DZA': 'DZA', // Algeria
+    'BGD': 'BGD', // Bangladesh
+    'MYS': 'MYS', // Malaysia
+    'LKA': 'LKA', // Sri Lanka
+    'DNK': 'DNK', // Denmark
+    'MAR': 'MAR', // Morocco
+    'VEN': 'VEN', // Venezuela
+    'NZL': 'NZL', // New Zealand
+    'BGR': 'BGR', // Bulgaria
+    'HND': 'HND', // Honduras
+    'TWN': 'TWN', // Taiwan
+    'MMR': 'MMR', // Myanmar
+    'JOR': 'JOR', // Jordan
+    'PER': 'PER', // Peru
+    'PRK': 'PRK', // North Korea
+    'SVK': 'SVK', // Slovakia
+    'IRQ': 'IRQ', // Iraq
+    'TUN': 'TUN', // Tunisia
+    'CRI': 'CRI', // Costa Rica
+    'BOL': 'BOL', // Bolivia
+    'COL': 'COL', // Colombia
+    'HRV': 'HRV', // Croatia
+    'BLR': 'BLR', // Belarus
+    'MUS': 'MUS', // Mauritius
+    'KEN': 'KEN', // Kenya
+    'ECU': 'ECU', // Ecuador
+    'LAO': 'LAO', // Laos
+    'ISL': 'ISL', // Iceland
+    'BIH': 'BIH', // Bosnia and Herzegovina
+    'SDN': 'SDN', // Sudan
+    'GEO': 'GEO', // Georgia
+    'SYR': 'SYR', // Syria
+    'HUN': 'HUN', // Hungary
+    'PAN': 'PAN', // Panama
+    'EST': 'EST', // Estonia
+    'UZB': 'UZB', // Uzbekistan
+    'SLV': 'SLV', // El Salvador
+    'NIC': 'NIC', // Nicaragua
+    'KHM': 'KHM', // Cambodia
+    'ZMB': 'ZMB', // Zambia
+    'PNG': 'PNG', // Papua New Guinea
+    'DOM': 'DOM', // Dominican Republic
+    'COD': 'COD', // Democratic Republic of the Congo
+    'SGP': 'SGP', // Singapore
+    'NPL': 'NPL', // Nepal
+    'CUB': 'CUB', // Cuba
+    'AZE': 'AZE', // Azerbaijan
+    'AGO': 'AGO', // Angola
+    'NGA': 'NGA', // Nigeria
+    'NAM': 'NAM', // Namibia
+    'ETH': 'ETH', // Ethiopia
+    'SRB': 'SRB', // Serbia
+    'QAT': 'QAT', // Qatar
+    'OMN': 'OMN', // Oman
+    'MKD': 'MKD', // North Macedonia
+    'MDG': 'MDG', // Madagascar
+    'LBY': 'LBY', // Libya
+    'FJI': 'FJI', // Fiji
+    'UGA': 'UGA', // Uganda
+    'TZA': 'TZA', // Tanzania
+    'RWA': 'RWA', // Rwanda
+    'TJK': 'TJK', // Tajikistan
+    'SEN': 'SEN', // Senegal
+    'JAM': 'JAM', // Jamaica
+    'KWT': 'KWT', // Kuwait
+    'GIN': 'GIN', // Guinea
+    'AFG': 'AFG', // Afghanistan
+    'SVN': 'SVN', // Slovenia
+    'MNG': 'MNG', // Mongolia
+    'COG': 'COG', // Republic of the Congo
+    'CMR': 'CMR', // Cameroon
+    'CIV': 'CIV', // Ivory Coast
+    'BHR': 'BHR', // Bahrain
+    'ARM': 'ARM', // Armenia
+    'ALB': 'ALB', // Albania
+    'YEM': 'YEM', // Yemen
+    'TKM': 'TKM', // Turkmenistan
+    'NER': 'NER', // Niger
+    'MRT': 'MRT', // Mauritania
+    'LBN': 'LBN', // Lebanon
+    'BFA': 'BFA', // Burkina Faso
+    'TTO': 'TTO', // Trinidad and Tobago
+    'SWZ': 'SWZ', // Eswatini
+    'MDA': 'MDA', // Moldova
+    'LTU': 'LTU', // Lithuania
+    'GUF': 'GUF', // French Guiana
+    'GHA': 'GHA', // Ghana
+    'GAB': 'GAB', // Gabon
+    'MWI': 'MWI', // Malawi
+    'LVA': 'LVA', // Latvia
+    'GUY': 'GUY', // Guyana
+    'BTN': 'BTN', // Bhutan
+    'MLI': 'MLI', // Mali
+    'CPV': 'CPV', // Cape Verde
+    'BRN': 'BRN', // Brunei
+    'BDI': 'BDI', // Burundi
+    'TGO': 'TGO', // Togo
+    'SLE': 'SLE', // Sierra Leone
+    'PRY': 'PRY', // Paraguay
+    'MOZ': 'MOZ', // Mozambique
+    'MNE': 'MNE', // Montenegro
+    'GNQ': 'GNQ', // Equatorial Guinea
+    'CYP': 'CYP', // Cyprus
+    'ZWE': 'ZWE', // Zimbabwe
+    'LUX': 'LUX', // Luxembourg
+    'LBR': 'LBR', // Liberia
+    'KOS': 'KOS', // Kosovo
+    'GMB': 'GMB', // Gambia
+    'ERI': 'ERI', // Eritrea
+    'CAF': 'CAF', // Central African Republic
+    'BWA': 'BWA', // Botswana
+    'BEN': 'BEN', // Benin
+    'ATA': 'ATA', // Antarctica
+    'SUR': 'SUR', // Suriname
+    'PSE': 'PSE', // Palestine
+    'LSO': 'LSO', // Lesotho
+    'LCA': 'LCA', // Saint Lucia
+    'GNB': 'GNB', // Guinea-Bissau
+    'ESH': 'ESH', // Western Sahara
+    'DJI': 'DJI'  // Djibouti
+  };
+
+  return countryMap[countryCode] || countryCode; // Return original code if not found
 }

@@ -7,6 +7,181 @@ import './LayersFiltersTab.css';
 import './StatusComponents.css';
 import './StatusComponents.css';
 
+// Function to get country flag emoji
+function getCountryFlag(countryCode: string): string {
+  const flagMap: Record<string, string> = {
+    'CA': '🇨🇦',
+    'US': '🇺🇸',
+    'KZ': '🇰🇿',
+    'AE': '🇦🇪',
+    'IN': '🇮🇳',
+    'KG': '🇰🇬',
+    'CHN': '🇨🇳',
+    'GBR': '🇬🇧',
+    'BRA': '🇧🇷',
+    'FRA': '🇫🇷',
+    'DEU': '🇩🇪',
+    'ESP': '🇪🇸',
+    'RUS': '🇷🇺',
+    'JPN': '🇯🇵',
+    'AUS': '🇦🇺',
+    'PRT': '🇵🇹',
+    'CZE': '🇨🇿',
+    'ITA': '🇮🇹',
+    'CHL': '🇨🇱',
+    'NOR': '🇳🇴',
+    'MEX': '🇲🇽',
+    'VNM': '🇻🇳',
+    'ARG': '🇦🇷',
+    'THA': '🇹🇭',
+    'POL': '🇵🇱',
+    'FIN': '🇫🇮',
+    'IDN': '🇮🇩',
+    'SWE': '🇸🇪',
+    'CHE': '🇨🇭',
+    'TUR': '🇹🇷',
+    'KOR': '🇰🇷',
+    'PHL': '🇵🇭',
+    'IRN': '🇮🇷',
+    'ZAF': '🇿🇦',
+    'AUT': '🇦🇹',
+    'SAU': '🇸🇦',
+    'GRC': '🇬🇷',
+    'GTM': '🇬🇹',
+    'URY': '🇺🇾',
+    'NLD': '🇳🇱',
+    'BEL': '🇧🇪',
+    'ROU': '🇷🇴',
+    'UKR': '🇺🇦',
+    'PAK': '🇵🇰',
+    'EGY': '🇪🇬',
+    'ISR': '🇮🇱',
+    'IRL': '🇮🇪',
+    'DZA': '🇩🇿',
+    'BGD': '🇧🇩',
+    'MYS': '🇲🇾',
+    'LKA': '🇱🇰',
+    'DNK': '🇩🇰',
+    'MAR': '🇲🇦',
+    'VEN': '🇻🇪',
+    'NZL': '🇳🇿',
+    'BGR': '🇧🇬',
+    'HND': '🇭🇳',
+    'TWN': '🇹🇼',
+    'MMR': '🇲🇲',
+    'JOR': '🇯🇴',
+    'PER': '🇵🇪',
+    'PRK': '🇰🇵',
+    'SVK': '🇸🇰',
+    'IRQ': '🇮🇶',
+    'TUN': '🇹🇳',
+    'CRI': '🇨🇷',
+    'BOL': '🇧🇴',
+    'COL': '🇨🇴',
+    'HRV': '🇭🇷',
+    'BLR': '🇧🇾',
+    'MUS': '🇲🇺',
+    'KEN': '🇰🇪',
+    'ECU': '🇪🇨',
+    'LAO': '🇱🇦',
+    'ISL': '🇮🇸',
+    'BIH': '🇧🇦',
+    'SDN': '🇸🇩',
+    'GEO': '🇬🇪',
+    'SYR': '🇸🇾',
+    'HUN': '🇭🇺',
+    'PAN': '🇵🇦',
+    'EST': '🇪🇪',
+    'UZB': '🇺🇿',
+    'SLV': '🇸🇻',
+    'NIC': '🇳🇮',
+    'KHM': '🇰🇭',
+    'ZMB': '🇿🇲',
+    'PNG': '🇵🇬',
+    'DOM': '🇩🇴',
+    'COD': '🇨🇩',
+    'SGP': '🇸🇬',
+    'NPL': '🇳🇵',
+    'CUB': '🇨🇺',
+    'AZE': '🇦🇿',
+    'AGO': '🇦🇴',
+    'NGA': '🇳🇬',
+    'NAM': '🇳🇦',
+    'ETH': '🇪🇹',
+    'SRB': '🇷🇸',
+    'QAT': '🇶🇦',
+    'OMN': '🇴🇲',
+    'MKD': '🇲🇰',
+    'MDG': '🇲🇬',
+    'LBY': '🇱🇾',
+    'FJI': '🇫🇯',
+    'UGA': '🇺🇬',
+    'TZA': '🇹🇿',
+    'RWA': '🇷🇼',
+    'TJK': '🇹🇯',
+    'SEN': '🇸🇳',
+    'JAM': '🇯🇲',
+    'KWT': '🇰🇼',
+    'GIN': '🇬🇳',
+    'AFG': '🇦🇫',
+    'SVN': '🇸🇮',
+    'MNG': '🇲🇳',
+    'COG': '🇨🇬',
+    'CMR': '🇨🇲',
+    'CIV': '🇨🇮',
+    'BHR': '🇧🇭',
+    'ARM': '🇦🇲',
+    'ALB': '🇦🇱',
+    'YEM': '🇾🇪',
+    'TKM': '🇹🇲',
+    'NER': '🇳🇪',
+    'MRT': '🇲🇷',
+    'LBN': '🇱🇧',
+    'BFA': '🇧🇫',
+    'TTO': '🇹🇹',
+    'SWZ': '🇸🇿',
+    'MDA': '🇲🇩',
+    'LTU': '🇱🇹',
+    'GUF': '🇬🇫',
+    'GHA': '🇬🇭',
+    'GAB': '🇬🇦',
+    'MWI': '🇲🇼',
+    'LVA': '🇱🇻',
+    'GUY': '🇬🇾',
+    'BTN': '🇧🇹',
+    'MLI': '🇲🇱',
+    'CPV': '🇨🇻',
+    'BRN': '🇧🇳',
+    'BDI': '🇧🇮',
+    'TGO': '🇹🇬',
+    'SLE': '🇸🇱',
+    'PRY': '🇵🇾',
+    'MOZ': '🇲🇿',
+    'MNE': '🇲🇪',
+    'GNQ': '🇬🇶',
+    'CYP': '🇨🇾',
+    'ZWE': '🇿🇼',
+    'LUX': '🇱🇺',
+    'LBR': '🇱🇷',
+    'KOS': '🇽🇰',
+    'GMB': '🇬🇲',
+    'ERI': '🇪🇷',
+    'CAF': '🇨🇫',
+    'BWA': '🇧🇼',
+    'BEN': '🇧🇯',
+    'ATA': '🇦🇶',
+    'SUR': '🇸🇷',
+    'PSE': '🇵🇸',
+    'LSO': '🇱🇸',
+    'LCA': '🇱🇨',
+    'GNB': '🇬🇼',
+    'ESH': '🇪🇭',
+    'DJI': '🇩🇯'
+  };
+  
+  return flagMap[countryCode] || '🏳️';
+}
+
 interface LayersFiltersTabProps {
   // Layer visibility
   showPowerPlants: boolean;
@@ -18,9 +193,20 @@ interface LayersFiltersTabProps {
   showCanadianPlants: boolean;
   showAmericanPlants: boolean;
   showKazakhstanPlants: boolean;
+  showUaePlants: boolean;
+  showIndiaPlants: boolean;
+  showKyrgyzstanPlants: boolean;
   onToggleCanadianPlants: () => void;
   onToggleAmericanPlants: () => void;
   onToggleKazakhstanPlants: () => void;
+  onToggleUaePlants: () => void;
+  onToggleIndiaPlants: () => void;
+  onToggleKyrgyzstanPlants: () => void;
+  
+  // Dynamic country filtering
+  allCountries: Array<{code: string, name: string, count: number, usedCapacity?: number}>;
+  enabledCountries: Set<string>;
+  onToggleCountryFilter: (countryCode: string) => void;
 
   // Status filtering
   allStatuses: string[];
@@ -58,12 +244,21 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   showWfsCables,
   onTogglePowerPlants,
   onToggleWfsCables,
-  showCanadianPlants,
-  showAmericanPlants,
-  showKazakhstanPlants,
-  onToggleCanadianPlants,
-  onToggleAmericanPlants,
-  onToggleKazakhstanPlants,
+  showCanadianPlants: _showCanadianPlants,
+  showAmericanPlants: _showAmericanPlants,
+  showKazakhstanPlants: _showKazakhstanPlants,
+  showUaePlants: _showUaePlants,
+  showIndiaPlants: _showIndiaPlants,
+  showKyrgyzstanPlants: _showKyrgyzstanPlants,
+  onToggleCanadianPlants: _onToggleCanadianPlants,
+  onToggleAmericanPlants: _onToggleAmericanPlants,
+  onToggleKazakhstanPlants: _onToggleKazakhstanPlants,
+  onToggleUaePlants: _onToggleUaePlants,
+  onToggleIndiaPlants: _onToggleIndiaPlants,
+  onToggleKyrgyzstanPlants: _onToggleKyrgyzstanPlants,
+  allCountries,
+  enabledCountries,
+  onToggleCountryFilter,
   allStatuses,
   filteredStatuses,
   onToggleStatusFilter,
@@ -86,6 +281,27 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [powerRangePreset, setPowerRangePreset] = useState<PowerRangePreset | null>(null);
+  
+  // State for country dropdown
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+  const [countrySearchTerm, setCountrySearchTerm] = useState('');
+  
+  // Filter countries based on search term and sort with US/CA pinned at top
+  const filteredCountries = allCountries
+    .filter(country =>
+      country.name.toLowerCase().includes(countrySearchTerm.toLowerCase()) ||
+      country.code.toLowerCase().includes(countrySearchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Pin US and CA at the top
+      if (a.code === 'US' && b.code !== 'US') return -1;
+      if (b.code === 'US' && a.code !== 'US') return 1;
+      if (a.code === 'CA' && b.code !== 'CA' && b.code !== 'US') return -1;
+      if (b.code === 'CA' && a.code !== 'CA' && a.code !== 'US') return 1;
+      
+      // Sort the rest alphabetically by name
+      return a.name.localeCompare(b.name);
+    });
 
   // Power range presets
   const powerRangePresets = {
@@ -173,32 +389,48 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
 
         {/* Country Filter */}
         <div className="control-group">
-          <label className="control-label">Countries</label>
-          <div className="country-buttons">
+          <label className="control-label">Countries ({enabledCountries.size} selected)</label>
+          <div className="country-dropdown">
             <button
-              className={`country-button ${showCanadianPlants ? 'active' : 'inactive'}`}
-              onClick={onToggleCanadianPlants}
-              aria-pressed={showCanadianPlants}
-              aria-label="Toggle Canadian power plants"
+              className="dropdown-trigger"
+              onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+              aria-expanded={isCountryDropdownOpen}
+              aria-label="Select countries"
             >
-              🇨🇦 Canada
+              <span>Select Countries</span>
+              <span className="dropdown-arrow">{isCountryDropdownOpen ? '▲' : '▼'}</span>
             </button>
-            <button
-              className={`country-button ${showAmericanPlants ? 'active' : 'inactive'}`}
-              onClick={onToggleAmericanPlants}
-              aria-pressed={showAmericanPlants}
-              aria-label="Toggle American power plants"
-            >
-              🇺🇸 United States
-            </button>
-            <button
-              className={`country-button ${showKazakhstanPlants ? 'active' : 'inactive'}`}
-              onClick={onToggleKazakhstanPlants}
-              aria-pressed={showKazakhstanPlants}
-              aria-label="Toggle Kazakhstan power plants"
-            >
-              🇰🇿 Kazakhstan
-            </button>
+            
+            {isCountryDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="search-box">
+                  <input
+                    type="text"
+                    placeholder="Search countries..."
+                    value={countrySearchTerm}
+                    onChange={(e) => setCountrySearchTerm(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+                <div className="country-list">
+                  {filteredCountries.map(country => (
+                    <label key={country.code} className="country-item">
+                      <input
+                        type="checkbox"
+                        checked={enabledCountries.has(country.code)}
+                        onChange={() => onToggleCountryFilter(country.code)}
+                      />
+                      <span className="country-flag">{getCountryFlag(country.code)}</span>
+                      <span className="country-name">{country.name}</span>
+                      <span className="country-count">({country.count})</span>
+                      {country.usedCapacity && (
+                        <span className="country-capacity">• {country.usedCapacity.toFixed(1)} MW used</span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
