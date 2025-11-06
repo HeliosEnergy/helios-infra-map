@@ -403,8 +403,8 @@ function App() {
         setPowerRange(calculatedRange);
 
         // Update current filter values to fit within new range if needed
-        setMinPowerOutput(prev => Math.max(prev, calculatedRange.min));
-        setMaxPowerOutput(prev => Math.min(prev, calculatedRange.max));
+        setMinPowerOutput(prev => Math.max(calculatedRange.min, Math.min(prev, calculatedRange.max)));
+        setMaxPowerOutput(prev => Math.min(calculatedRange.max, Math.max(prev, calculatedRange.min)));
 
         // Create spatial index for submarine cables only (removed terrestrial links)
         const index = createLineIndex(wfsCableData);
@@ -429,8 +429,8 @@ function App() {
           }
           countryData[plant.country].count += 1;
           
-          // Add used capacity if available (for global database plants)
-          if (plant.usedCapacity && plant.country !== 'US' && plant.country !== 'CA') {
+          // Add used capacity if available (for global database plants, including US)
+          if (plant.usedCapacity && plant.country !== 'CA') {
             countryData[plant.country].usedCapacity += plant.usedCapacity;
           }
         });
@@ -446,8 +446,8 @@ function App() {
         
         setAllCountries(countriesList);
         
-        // Initialize enabled countries with US and Canada only (default)
-        setEnabledCountries(new Set(['US', 'CA']));
+        // Initialize enabled countries with US only (default) - Canada will be shown only if user selects it
+        setEnabledCountries(new Set(['US']));
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -469,6 +469,11 @@ function App() {
     // New power output range filtering
     const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
+    // Capacity factor filtering
+    const plantCapacityFactor = plant.capacityFactor ?? null;
+    const passesCapacityFactorFilter = plantCapacityFactor === null || 
+      (plantCapacityFactor >= minCapacityFactor && plantCapacityFactor <= maxCapacityFactor);
+
     // Status filtering
     const plantStatus = plant.rawData?.statusDescription || 'N/A';
     const passesStatusFilter = filteredStatuses.has(plantStatus);
@@ -489,7 +494,7 @@ function App() {
       }
     }
 
-    return passesSourceFilter && passesCountryFilter && passesPowerOutputFilter && passesNearbyFilter && passesStatusFilter && passesPlantSelectionFilter;
+    return passesSourceFilter && passesCountryFilter && passesPowerOutputFilter && passesCapacityFactorFilter && passesNearbyFilter && passesStatusFilter && passesPlantSelectionFilter;
   });
   
   // Get all unique sources from the data for the legend
@@ -766,6 +771,28 @@ function App() {
              {(() => {
                const plant = hoverInfo || persistentPlant;
                if (!plant) return null;
+               
+               // For US plants, show the 6 required fields
+               if (plant.country === 'US') {
+                 const availableCapacity = plant.output;
+                 const usedCapacity = plant.usedCapacity || 0;
+                 const excessCapacity = availableCapacity - usedCapacity;
+                 const capacityFactor = availableCapacity > 0 ? (usedCapacity / availableCapacity) * 100 : 0;
+                 
+                 return (
+                   <>
+                     <h3>{plant.name}</h3>
+                     <p>Available Capacity: {availableCapacity.toFixed(1)} MW</p>
+                     <p>Source: {plant.source}</p>
+                     <p>Used Capacity: {usedCapacity.toFixed(1)} MW</p>
+                     <p>Excess Capacity: {excessCapacity.toFixed(1)} MW</p>
+                     <p>Capacity Factor: {capacityFactor.toFixed(1)}%</p>
+                     <p>Coordinates: {plant.coordinates[1].toFixed(4)}, {plant.coordinates[0].toFixed(4)}</p>
+                   </>
+                 );
+               }
+               
+               // For other countries, show the original format
                return (
                  <>
                    <h3>{plant.name}</h3>

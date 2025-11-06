@@ -19,12 +19,13 @@ const Header: React.FC = () => {
           </NavLink>
         </div>
         <nav className="header-nav">
-          <NavLink to="/data-visualizations" className="nav-link">
+          {/* Commented out until pages are ready for public view */}
+          {/* <NavLink to="/data-visualizations" className="nav-link">
             <span>Dashboard</span>
           </NavLink>
           <NavLink to="/analysis-guide" className="nav-link">
             <span>Analysis Guide</span>
-          </NavLink>
+          </NavLink> */}
           <a href="https://www.heliosenergy.io/" className="nav-link" target="_blank" rel="noopener noreferrer">
             <Globe size={18} />
             <span>Site</span>
