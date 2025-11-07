@@ -25,7 +25,10 @@ export function calculatePowerRange(powerPlants: PowerPlant[]): PowerRange {
   }
 
   const min = Math.min(...validOutputs);
-  const max = Math.max(...validOutputs) + 200; // Add 200 MW buffer
+  const calculatedMax = Math.max(...validOutputs) + 200; // Add 200 MW buffer
+  
+  // Cap the maximum at 7000 MW as per user requirement
+  const max = Math.min(calculatedMax, 7000);
 
   // Ensure minimum is not negative and maximum is reasonable
   const safeMin = Math.max(0, Math.floor(min));

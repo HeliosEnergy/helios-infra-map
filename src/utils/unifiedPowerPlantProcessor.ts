@@ -1,5 +1,4 @@
 import type { PowerPlant } from '../models/PowerPlant';
-import { loadEIADataEfficiently } from './efficientDataLoader';
 
 // Function to load and process power plants: Canada from CSV, US from EIA JSON, Global DB for Kazakhstan
 export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
@@ -96,15 +95,17 @@ export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
       }
     }
 
-    // Use global database for all countries EXCEPT US and CA (US from EIA, CA from CSVs)
+    // Use global database for all countries EXCEPT CA (CA from CSVs, US now from global database)
     if (Array.isArray(globalKazakhstanPlants) && globalKazakhstanPlants.length > 0) {
-      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US' && p.country !== 'CA');
+      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'CA');
     }
 
-    // Load US data from EIA JSON using efficient loader
-    console.log('Loading US data...');
-    const usPlants = await loadEIADataEfficiently();
-    console.log('US plants loaded:', usPlants.length);
+    // Extract US plants from global database
+    const usPlants = globalKazakhstanPlants.filter(p => p.country === 'US');
+    console.log('US plants loaded from global database:', usPlants.length);
+    
+    // Remove US plants from globalKazakhstanPlants array (they're now in usPlants)
+    globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US');
 
     // Combine and aggregate plants (ensure all arrays are defined)
     const allPlants = [
@@ -436,12 +437,15 @@ export function parseGlobalPowerPlantCSV(csvText: string): PowerPlant[] {
     const capacityStr = entry['capacity_mw'] || '0';
     const capacity = parseFloat(capacityStr.replace(/,/g, '')) || 0;
     
-    // Extract estimated generation (actual output) - use generation_gwh_2017 if available, otherwise estimated_generation_gwh_2017
-    const generationStr = entry['generation_gwh_2017'] || entry['estimated_generation_gwh_2017'] || '0';
+    // Extract estimated generation (actual output) - use generation_gwh_2019 if available, otherwise generation_gwh_2017, otherwise estimated_generation_gwh_2017
+    const generationStr = entry['generation_gwh_2019'] || entry['generation_gwh_2017'] || entry['estimated_generation_gwh_2017'] || '0';
     const generation = parseFloat(generationStr.replace(/,/g, '')) || 0;
     
     // Calculate used capacity: generation_gwh * 1000 / 8760 (since 1 year = 8760 hours)
     const usedCapacity = generation > 0 ? (generation * 1000) / 8760 : 0;
+    
+    // Calculate capacity factor: (usedCapacity / capacity) * 100
+    const capacityFactor = capacity > 0 && usedCapacity > 0 ? (usedCapacity / capacity) * 100 : null;
     
     // Map energy source
     const source = mapEnergySource(entry['primary_fuel'] || 'Other');
@@ -461,6 +465,7 @@ export function parseGlobalPowerPlantCSV(csvText: string): PowerPlant[] {
       capacityMW: capacity,
       usedCapacity: usedCapacity,
       generationGWh: generation,
+      capacityFactor: capacityFactor,
       rawData: {
         // Store additional calculated metrics
         usedCapacity: usedCapacity.toString(),

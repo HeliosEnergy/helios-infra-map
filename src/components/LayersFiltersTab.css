@@ -283,6 +283,84 @@
   color: #ccc;
 }
 
+/* Custom Range Inputs */
+.custom-range-inline {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dark .custom-range-inline {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.custom-range-inputs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.custom-range-inputs .range-input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-input-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  white-space: nowrap;
+  min-width: 35px;
+}
+
+.dark .range-input-label {
+  color: #aaa;
+}
+
+.range-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  background: white;
+  color: #333;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.range-input:focus {
+  outline: 2px solid #007bff;
+  outline-offset: -2px;
+  border-color: #007bff;
+}
+
+.dark .range-input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ccc;
+}
+
+.dark .range-input:focus {
+  border-color: #66b3ff;
+  outline-color: #66b3ff;
+}
+
+.range-input-unit {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.dark .range-input-unit {
+  color: #aaa;
+}
+
 /* Proximity Control */
 .proximity-control {
   margin-top: 12px;

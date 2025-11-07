@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import DualRangeSlider from './DualRangeSlider';
 import StatusChip from './StatusChip';
@@ -280,7 +280,14 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
 }) => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
-  const [powerRangePreset, setPowerRangePreset] = useState<PowerRangePreset | null>(null);
+  const [selectedPresets, setSelectedPresets] = useState<Set<PowerRangePreset>>(new Set());
+  const [showCustomRangeInputs, setShowCustomRangeInputs] = useState(false);
+  const [minInputValue, setMinInputValue] = useState<string>(minPowerOutput.toString());
+  const [maxInputValue, setMaxInputValue] = useState<string>(maxPowerOutput.toString());
+  
+  // State for capacity factor input values
+  const [minCapacityFactorInput, setMinCapacityFactorInput] = useState<string>(minCapacityFactor.toString());
+  const [maxCapacityFactorInput, setMaxCapacityFactorInput] = useState<string>(maxCapacityFactor.toString());
   
   // State for country dropdown
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
@@ -303,37 +310,88 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
       return a.name.localeCompare(b.name);
     });
 
-  // Power range presets
+  // Power range presets - use actual calculated max instead of hardcoded 10000
   const powerRangePresets = {
     small: { min: 0, max: 100, label: 'Small (0-100 MW)' },
     medium: { min: 100, max: 1000, label: 'Medium (100-1000 MW)' },
-    large: { min: 1000, max: 10000, label: 'Large (1000+ MW)' },
+    large: { min: 1000, max: powerRange.max, label: `Large (1000+ MW)` },
   };
 
   const handlePowerRangePreset = (preset: PowerRangePreset) => {
     if (preset === 'custom') {
-      setPowerRangePreset('custom');
+      // Toggle custom range inputs
+      setShowCustomRangeInputs(!showCustomRangeInputs);
+      // Clear other presets when custom is activated
+      if (!showCustomRangeInputs) {
+        setSelectedPresets(new Set());
+      }
       return;
     }
-    const range = powerRangePresets[preset];
-    onMinPowerOutputChange(range.min);
-    onMaxPowerOutputChange(range.max);
-    setPowerRangePreset(preset);
-  };
-
-  // Determine active preset based on current values
-  const getActivePreset = (): PowerRangePreset | null => {
-    if (powerRangePreset === 'custom') return 'custom';
-
-    for (const [key, range] of Object.entries(powerRangePresets)) {
-      if (minPowerOutput === range.min && maxPowerOutput === range.max) {
-        return key as PowerRangePreset;
+    
+    // Toggle the preset
+    setSelectedPresets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(preset)) {
+        // Deselect the preset
+        newSet.delete(preset);
+      } else {
+        // Select the preset
+        newSet.add(preset);
       }
-    }
-    return null;
+      return newSet;
+    });
+    
+    // Hide custom inputs when a preset is toggled
+    setShowCustomRangeInputs(false);
   };
 
-  const activePreset = getActivePreset();
+  // Calculate combined range from selected presets
+  useEffect(() => {
+    // Don't auto-update if custom inputs are shown (user is manually adjusting)
+    if (showCustomRangeInputs) {
+      return;
+    }
+
+    if (selectedPresets.size === 0) {
+      // If no presets selected, show all plants (full range)
+      onMinPowerOutputChange(powerRange.min);
+      onMaxPowerOutputChange(powerRange.max);
+      return;
+    }
+
+    // Calculate the combined range from all selected presets
+    const ranges = Array.from(selectedPresets)
+      .filter(p => p !== 'custom')
+      .map(p => powerRangePresets[p as keyof typeof powerRangePresets]);
+    
+    if (ranges.length === 0) return;
+
+    // Find the overall min and max across all selected presets
+    const combinedMin = Math.min(...ranges.map(r => r.min));
+    const combinedMax = Math.max(...ranges.map(r => r.max));
+    
+    onMinPowerOutputChange(combinedMin);
+    onMaxPowerOutputChange(combinedMax);
+  }, [selectedPresets, powerRange.min, powerRange.max, showCustomRangeInputs, onMinPowerOutputChange, onMaxPowerOutputChange]);
+  
+  // Sync input values when power output changes externally
+  useEffect(() => {
+    setMinInputValue(minPowerOutput.toString());
+  }, [minPowerOutput]);
+
+  useEffect(() => {
+    setMaxInputValue(maxPowerOutput.toString());
+  }, [maxPowerOutput]);
+
+
+  // Sync capacity factor input values when capacity factor changes externally
+  useEffect(() => {
+    setMinCapacityFactorInput(minCapacityFactor.toString());
+  }, [minCapacityFactor]);
+
+  useEffect(() => {
+    setMaxCapacityFactorInput(maxCapacityFactor.toString());
+  }, [maxCapacityFactor]);
 
   const toggleStatusDropdown = () => {
     setIsStatusDropdownOpen(!isStatusDropdownOpen);
@@ -477,21 +535,123 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             {Object.entries(powerRangePresets).map(([key, preset]) => (
               <button
                 key={key}
-                className={`preset-button ${activePreset === key ? 'active' : ''}`}
+                className={`preset-button ${selectedPresets.has(key as PowerRangePreset) ? 'active' : ''}`}
                 onClick={() => handlePowerRangePreset(key as PowerRangePreset)}
-                aria-pressed={activePreset === key}
+                aria-pressed={selectedPresets.has(key as PowerRangePreset)}
               >
                 {preset.label}
               </button>
             ))}
             <button
-              className={`preset-button ${activePreset === 'custom' ? 'active' : ''}`}
-              onClick={() => setShowAdvancedFilters(true)}
-              aria-pressed={activePreset === 'custom'}
+              className={`preset-button ${showCustomRangeInputs ? 'active' : ''}`}
+              onClick={() => handlePowerRangePreset('custom')}
+              aria-pressed={showCustomRangeInputs}
             >
               Custom Range
             </button>
           </div>
+          
+          {/* Custom Range Inputs - shown inline when Custom Range is clicked */}
+          {showCustomRangeInputs && (
+            <div className="custom-range-inline">
+              <div className="custom-range-inputs">
+                <div className="range-input-group">
+                  <label htmlFor="min-power-input-inline" className="range-input-label">Min:</label>
+                  <input
+                    id="min-power-input-inline"
+                    type="number"
+                    min={powerRange.min}
+                    max={powerRange.max}
+                    value={minInputValue}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMinInputValue(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current minPowerOutput
+                        setMinInputValue(minPowerOutput.toString());
+                      } else {
+                        // Clamp to valid range and ensure it doesn't exceed max
+                        const clampedValue = Math.max(
+                          powerRange.min, 
+                          Math.min(maxPowerOutput, Math.min(powerRange.max, numValue))
+                        );
+                        setMinInputValue(clampedValue.toString());
+                        onMinPowerOutputChange(clampedValue);
+                        // Clear selected presets when manually adjusting
+                        setSelectedPresets(new Set());
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">MW</span>
+                </div>
+                <div className="range-input-group">
+                  <label htmlFor="max-power-input-inline" className="range-input-label">Max:</label>
+                  <input
+                    id="max-power-input-inline"
+                    type="number"
+                    min={powerRange.min}
+                    max={powerRange.max}
+                    value={maxInputValue}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMaxInputValue(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current maxPowerOutput
+                        setMaxInputValue(maxPowerOutput.toString());
+                      } else {
+                        // Clamp to valid range and ensure it's not less than min
+                        const clampedValue = Math.max(
+                          minPowerOutput,
+                          Math.min(powerRange.max, numValue)
+                        );
+                        setMaxInputValue(clampedValue.toString());
+                        onMaxPowerOutputChange(clampedValue);
+                        // Clear selected presets when manually adjusting
+                        setSelectedPresets(new Set());
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">MW</span>
+                </div>
+              </div>
+              <DualRangeSlider
+                min={powerRange.min}
+                max={powerRange.max}
+                value={[minPowerOutput, maxPowerOutput]}
+                onChange={([min, max]) => {
+                  onMinPowerOutputChange(min);
+                  onMaxPowerOutputChange(max);
+                  // Clear selected presets when manually adjusting slider
+                  setSelectedPresets(new Set());
+                }}
+                step={10}
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -570,6 +730,90 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             {/* Custom Power Range */}
             <div className="control-group">
               <label className="control-label">Custom Power Range (MW)</label>
+              <div className="custom-range-inputs">
+                <div className="range-input-group">
+                  <label htmlFor="min-power-input" className="range-input-label">Min:</label>
+                  <input
+                    id="min-power-input"
+                    type="number"
+                    min={powerRange.min}
+                    max={powerRange.max}
+                    value={minInputValue}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMinInputValue(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current minPowerOutput
+                        setMinInputValue(minPowerOutput.toString());
+                      } else {
+                        // Clamp to valid range and ensure it doesn't exceed max
+                        const clampedValue = Math.max(
+                          powerRange.min, 
+                          Math.min(maxPowerOutput, Math.min(powerRange.max, numValue))
+                        );
+                        setMinInputValue(clampedValue.toString());
+                        onMinPowerOutputChange(clampedValue);
+                        // Clear selected presets when manually adjusting
+                        setSelectedPresets(new Set());
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">MW</span>
+                </div>
+                <div className="range-input-group">
+                  <label htmlFor="max-power-input" className="range-input-label">Max:</label>
+                  <input
+                    id="max-power-input"
+                    type="number"
+                    min={powerRange.min}
+                    max={powerRange.max}
+                    value={maxInputValue}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMaxInputValue(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current maxPowerOutput
+                        setMaxInputValue(maxPowerOutput.toString());
+                      } else {
+                        // Clamp to valid range and ensure it's not less than min
+                        const clampedValue = Math.max(
+                          minPowerOutput,
+                          Math.min(powerRange.max, numValue)
+                        );
+                        setMaxInputValue(clampedValue.toString());
+                        onMaxPowerOutputChange(clampedValue);
+                        // Clear selected presets when manually adjusting
+                        setSelectedPresets(new Set());
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">MW</span>
+                </div>
+              </div>
               <DualRangeSlider
                 min={powerRange.min}
                 max={powerRange.max}
@@ -577,6 +821,8 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                 onChange={([min, max]) => {
                   onMinPowerOutputChange(min);
                   onMaxPowerOutputChange(max);
+                  // Clear selected presets when manually adjusting slider
+                  setSelectedPresets(new Set());
                 }}
                 step={10}
               />
@@ -584,6 +830,86 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
 
             <div className="filter-section">
               <label className="filter-label">Capacity Factor (%)</label>
+              <div className="custom-range-inputs">
+                <div className="range-input-group">
+                  <label htmlFor="min-capacity-factor-input" className="range-input-label">Min:</label>
+                  <input
+                    id="min-capacity-factor-input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={minCapacityFactorInput}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMinCapacityFactorInput(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current minCapacityFactor
+                        setMinCapacityFactorInput(minCapacityFactor.toString());
+                      } else {
+                        // Clamp to valid range and ensure it doesn't exceed max
+                        const clampedValue = Math.max(
+                          0, 
+                          Math.min(maxCapacityFactor, Math.min(100, numValue))
+                        );
+                        setMinCapacityFactorInput(clampedValue.toString());
+                        onMinCapacityFactorChange(clampedValue);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">%</span>
+                </div>
+                <div className="range-input-group">
+                  <label htmlFor="max-capacity-factor-input" className="range-input-label">Max:</label>
+                  <input
+                    id="max-capacity-factor-input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={maxCapacityFactorInput}
+                    onChange={(e) => {
+                      // Allow empty or partial input while typing
+                      setMaxCapacityFactorInput(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Validate and clamp on blur
+                      const numValue = Number(e.target.value);
+                      if (isNaN(numValue) || e.target.value === '') {
+                        // If empty or invalid, use current maxCapacityFactor
+                        setMaxCapacityFactorInput(maxCapacityFactor.toString());
+                      } else {
+                        // Clamp to valid range and ensure it's not less than min
+                        const clampedValue = Math.max(
+                          minCapacityFactor,
+                          Math.min(100, numValue)
+                        );
+                        setMaxCapacityFactorInput(clampedValue.toString());
+                        onMaxCapacityFactorChange(clampedValue);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Allow Enter key to trigger blur validation
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="range-input"
+                    step="1"
+                  />
+                  <span className="range-input-unit">%</span>
+                </div>
+              </div>
               <DualRangeSlider
                 min={0}
                 max={100}

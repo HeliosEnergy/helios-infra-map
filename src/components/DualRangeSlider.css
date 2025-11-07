@@ -1,7 +1,7 @@
 .dual-range-slider {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 
@@ -13,9 +13,10 @@
 .slider-container {
   position: relative;
   width: 100%;
-  height: 6px;
+  height: 4px;
   background: rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
+  border-radius: 2px;
+  overflow: visible; /* Ensure handles aren't clipped */
 }
 
 .dark .slider-container {
@@ -25,39 +26,44 @@
 .slider-input {
   position: absolute;
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
+  height: 16px; /* Clickable area extends beyond track */
+  top: -6px; /* Center the clickable area on the track */
+  left: 0;
+  border-radius: 2px;
   background: transparent;
   outline: none;
   -webkit-appearance: none;
-  pointer-events: auto;
+  pointer-events: auto !important;
   cursor: pointer;
+  z-index: 100; /* Very high z-index to ensure inputs are above everything */
+  margin: 0;
+  padding: 0;
 }
 
 .slider-max {
-  z-index: 2;
+  z-index: 101; /* Max handle above min handle */
 }
 
 .slider-min {
-  z-index: 1;
+  z-index: 100; /* Min handle above track */
 }
 
 .slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #007bff;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   border: 2px solid white;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .slider-input::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: scale(1.15);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
 }
 
 .dark .slider-input::-webkit-slider-thumb {
@@ -65,23 +71,33 @@
 }
 
 .slider-input::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #007bff;
   cursor: pointer;
   border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
 }
 
 .slider-input::-moz-range-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: scale(1.15);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
 }
 
 .dark .slider-input::-moz-range-thumb {
   border-color: #333;
+}
+
+.slider-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none !important; /* Completely disable pointer events */
+  z-index: 0; /* Very low z-index */
 }
 
 /* Track highlight between min and max */
@@ -89,8 +105,25 @@
   position: absolute;
   height: 100%;
   background: #007bff;
-  border-radius: 3px;
-  transition: all 0.2s ease;
+  border-radius: 2px;
+  transition: all 0.15s ease;
+  user-select: none;
+  z-index: 0;
+  pointer-events: none !important; /* Completely disable pointer events */
+}
+
+/* Draggable area in the middle portion only */
+.slider-track-draggable {
+  position: absolute;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none !important; /* Temporarily disable to test */
+  cursor: grab;
+  user-select: none;
+}
+
+.slider-track-draggable:active {
+  cursor: grabbing;
 }
 
 /* Value display */
@@ -98,8 +131,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 500;
   color: #333;
 }
@@ -111,11 +144,12 @@
 .slider-value {
   background: rgba(0, 123, 255, 0.1);
   color: #007bff;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 2px 6px;
+  border-radius: 10px;
   font-weight: 600;
-  min-width: 60px;
+  min-width: 50px;
   text-align: center;
+  font-size: 11px;
 }
 
 .dark .slider-value {
@@ -135,22 +169,23 @@
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .slider-input::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
   }
 
   .slider-input::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
   }
 
   .slider-values {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .slider-value {
-    min-width: 50px;
-    padding: 2px 6px;
+    min-width: 45px;
+    padding: 1px 5px;
+    font-size: 10px;
   }
 }
 
