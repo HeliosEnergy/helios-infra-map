@@ -186,8 +186,10 @@ interface LayersFiltersTabProps {
   // Layer visibility
   showPowerPlants: boolean;
   showWfsCables: boolean;
+  showHifldLines: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
+  onToggleHifldLines: () => void;
 
   // Country filtering
   showCanadianPlants: boolean;
@@ -242,8 +244,10 @@ type PowerRangePreset = 'small' | 'medium' | 'large' | 'custom';
 const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   showPowerPlants,
   showWfsCables,
+  showHifldLines,
   onTogglePowerPlants,
   onToggleWfsCables,
+  onToggleHifldLines,
   showCanadianPlants: _showCanadianPlants,
   showAmericanPlants: _showAmericanPlants,
   showKazakhstanPlants: _showKazakhstanPlants,
@@ -437,6 +441,17 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             />
             <span className="toggle-slider"></span>
             <span className="toggle-label">Infrastructure</span>
+          </label>
+
+          <label className="toggle-item">
+            <input
+              type="checkbox"
+              checked={showHifldLines}
+              onChange={onToggleHifldLines}
+              className="toggle-input"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-label">Detailed US Infrastructure</span>
           </label>
         </div>
       </section>

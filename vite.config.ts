@@ -13,6 +13,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/itu-proxy/, ''),
         secure: false
+      },
+      '/api/hifld-proxy': {
+        target: 'https://services1.arcgis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/hifld-proxy/, '/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0/query'),
+        secure: false
       }
     }
   },
