@@ -726,10 +726,8 @@ function App() {
       jointRounded: true, // Rounded joints for smoother appearance
       billboard: false, // Lines follow terrain
       onHover: (info: { object?: TransmissionLine }) => {
-        // Only update hover if not persistent (clicked)
-        if (!isLineTooltipPersistent) {
-          setHoveredLine(info.object || null);
-        }
+        // Always update hover (like power plants) - display logic will show hoveredLine if exists, otherwise persistentLine
+        setHoveredLine(info.object || null);
       },
       updateTriggers: {
         data: hifldLines.length, // Force update when data changes
