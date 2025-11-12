@@ -7,14 +7,17 @@ import DataVisualizations from './DataVisualizations';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import type { PowerPlant } from '../models/PowerPlant';
 import { getCableCacheStats, clearCableCache } from '../utils/wfsDataLoader';
+import { getHifldCacheStats, clearHifldCache } from '../utils/hifldDataLoader';
 import './SidePanel.css';
 
 interface SidePanelProps {
   // Layer visibility
   showPowerPlants: boolean;
   showWfsCables: boolean;
+  showHifldLines: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
+  onToggleHifldLines: () => void;
 
   // Filtering state
   filteredSources: Set<string>;
@@ -91,8 +94,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // Layer visibility
   showPowerPlants,
   showWfsCables,
+  showHifldLines,
   onTogglePowerPlants,
   onToggleWfsCables,
+  onToggleHifldLines,
 
   // Filtering
   filteredSources,
@@ -194,8 +199,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
               <LayersFiltersTab
                 showPowerPlants={showPowerPlants}
                 showWfsCables={showWfsCables}
+                showHifldLines={showHifldLines}
                 onTogglePowerPlants={onTogglePowerPlants}
                 onToggleWfsCables={onToggleWfsCables}
+                onToggleHifldLines={onToggleHifldLines}
                 showCanadianPlants={showCanadianPlants}
                 showAmericanPlants={showAmericanPlants}
                 showKazakhstanPlants={showKazakhstanPlants}
@@ -265,6 +272,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
       case 'data': {
         const cacheStats = getCableCacheStats();
+        const hifldCacheStats = getHifldCacheStats();
         return (
           <div className="tab-content-placeholder">
             <h3>Data & Export</h3>
@@ -294,6 +302,21 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 >
                   Clear EIA Cache
                 </button>
+                <button
+                  onClick={() => {
+                    clearHifldCache();
+                    window.location.reload(); // Reload to fetch fresh HIFLD data
+                  }}
+                  className="clear-cache-btn"
+                  style={{ marginTop: '8px' }}
+                >
+                  Clear HIFLD Cache {hifldCacheStats.cached && `(${hifldCacheStats.count} lines)`}
+                </button>
+                {hifldCacheStats.cached && hifldCacheStats.count < 5000 && (
+                  <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#dc3545' }}>
+                    ⚠️ HIFLD cache appears incomplete. Clear cache to reload full dataset.
+                  </p>
+                )}
               </div>
             </div>
           </div>

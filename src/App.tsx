@@ -5,8 +5,10 @@ import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
 import './App.css';
 import type { PowerPlant } from './models/PowerPlant';
 import type { Cable } from './models/Cable';
+import type { TransmissionLine } from './models/TransmissionLine';
 
 import { loadWfsCableData } from './utils/wfsDataLoader';
+import { loadHifldData } from './utils/hifldDataLoader';
 import { loadAndProcessAllPowerPlants } from './utils/unifiedPowerPlantProcessor';
 import { isPointNearLine } from './utils/geoUtils';
 import type { LineSegment } from './utils/spatialIndex';
@@ -245,10 +247,17 @@ function App() {
   const { theme } = useTheme();
   const [powerPlants, setPowerPlants] = useState<PowerPlant[]>([]);
   const [wfsCables, setWfsCables] = useState<Cable[]>([]);
+  const [hifldLines, setHifldLines] = useState<TransmissionLine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showPowerPlants, setShowPowerPlants] = useState<boolean>(true);
   const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
+  const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
+  const [loadingHifld, setLoadingHifld] = useState<boolean>(false);
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
+  const [hoveredLine, setHoveredLine] = useState<TransmissionLine | null>(null);
+  // State for persistent tooltip for transmission lines
+  const [isLineTooltipPersistent, setIsLineTooltipPersistent] = useState<boolean>(false);
+  const [persistentLine, setPersistentLine] = useState<TransmissionLine | null>(null);
   // State for filtering power plants by source
   const [filteredSources, setFilteredSources] = useState<Set<string>>(new Set());
   // State for power output range filtering (0 MW to 10000 MW)
@@ -390,6 +399,8 @@ function App() {
         // Load WFS submarine cable data (unchanged)
         const wfsCableData = await loadWfsCableData();
 
+        // HIFLD data will be loaded when toggle is enabled (on-demand loading)
+
         // Add validation to check if we have sufficient data
         if (powerPlantData.length < 500) {
           console.warn(`Only loaded ${powerPlantData.length} power plants. This may indicate a data loading issue.`);
@@ -397,6 +408,7 @@ function App() {
 
         setPowerPlants(powerPlantData);
         setWfsCables(wfsCableData);
+        // HIFLD lines are loaded asynchronously above, don't set here
 
         // Calculate actual power range from data
         const calculatedRange = calculatePowerRange(powerPlantData);
@@ -497,6 +509,40 @@ function App() {
     return passesSourceFilter && passesCountryFilter && passesPowerOutputFilter && passesCapacityFactorFilter && passesNearbyFilter && passesStatusFilter && passesPlantSelectionFilter;
   });
   
+
+  // Load HIFLD data when toggle is enabled
+  useEffect(() => {
+    if (showHifldLines && hifldLines.length === 0 && !loadingHifld) {
+      setLoadingHifld(true);
+      
+      // Add a timeout to prevent infinite loading (210 seconds - allow time for many pages)
+      const loadTimeout = setTimeout(() => {
+        console.error('❌ HIFLD data loading timeout after 210 seconds');
+        setLoadingHifld(false);
+        setHifldLines([]);
+      }, 210000); // 210 second max timeout (allows for 200s fetch + buffer)
+      
+      loadHifldData()
+        .then((data) => {
+          clearTimeout(loadTimeout);
+          console.log(`✅ Loaded ${data.length} HIFLD transmission lines`);
+          setHifldLines(data);
+          if (data.length > 0) {
+            console.log(`💡 HIFLD data ready - ${data.length} transmission lines available`);
+          }
+        })
+        .catch((error) => {
+          clearTimeout(loadTimeout);
+          console.error('❌ Failed to load HIFLD data:', error);
+          setHifldLines([]);
+        })
+        .finally(() => {
+          clearTimeout(loadTimeout);
+          setLoadingHifld(false);
+        });
+    }
+  }, [showHifldLines, hifldLines.length, loadingHifld]);
+
   // Get all unique sources from the data for the legend
   const allSourcesInData = Array.from(new Set(powerPlants.map(plant => plant.source))).sort();
 
@@ -566,7 +612,7 @@ function App() {
   }, [powerPlants, wfsCables]);
 
   const layers = useMemo(() => {
-    return [
+    const layerList = [
       showPowerPlants && new ScatterplotLayer({
       id: 'power-plants',
       data: filteredPowerPlants,
@@ -628,9 +674,72 @@ function App() {
       getColor: CABLE_COLOR, // Orange color
       getWidth: 2, // Thinner cables
       onHover: () => {}
+    }),
+    showHifldLines && hifldLines.length > 0 && new PathLayer({
+      id: 'hifld-lines',
+      data: hifldLines,
+      pickable: true,
+      widthMinPixels: 0.5, // Thinner lines for cleaner look
+      widthMaxPixels: 2, // Max width for visual clarity
+      widthScale: 1,
+      widthUnits: 'pixels',
+      getPath: (d: TransmissionLine) => {
+        // Verify coordinates are in correct format [lon, lat]
+        if (!d.coordinates || d.coordinates.length === 0) {
+          console.warn('⚠️ Transmission line has no coordinates:', d.id);
+          return [];
+        }
+        // Ensure coordinates are in [lon, lat] format (GeoJSON standard)
+        // PathLayer expects coordinates as [lon, lat][] which is what we have
+        return d.coordinates;
+      },
+      getColor: (d: TransmissionLine) => {
+        // Vary color by voltage class for better visual distinction
+        const voltage = d.properties?.voltage || d.properties?.VOLTAGE;
+        const voltClass = d.properties?.voltClass || d.properties?.VOLT_CLASS;
+        
+        // Higher voltage = brighter/more prominent color
+        if (voltClass === '765' || voltClass === '500' || (voltage && voltage >= 500)) {
+          return [0, 150, 255, 200]; // Bright blue for high voltage
+        } else if (voltClass === '345' || voltClass === '230' || (voltage && voltage >= 230)) {
+          return [50, 120, 200, 160]; // Medium blue for medium voltage
+        } else {
+          return [100, 150, 200, 120]; // Lighter blue for lower voltage
+        }
+      },
+      getWidth: (d: TransmissionLine) => {
+        // Vary width by voltage - higher voltage = thicker line
+        const voltage = d.properties?.voltage || d.properties?.VOLTAGE;
+        const voltClass = d.properties?.voltClass || d.properties?.VOLT_CLASS;
+        
+        if (voltClass === '765' || voltClass === '500' || (voltage && voltage >= 500)) {
+          return 1.5; // Thicker for high voltage
+        } else if (voltClass === '345' || voltClass === '230' || (voltage && voltage >= 230)) {
+          return 1.0; // Medium width
+        } else {
+          return 0.8; // Thinner for lower voltage
+        }
+      },
+      getPickingRadius: 8, // Picking radius for easier clicking
+      opacity: 0.6, // Overall opacity for less visual clutter
+      capRounded: true, // Rounded line caps for smoother appearance
+      jointRounded: true, // Rounded joints for smoother appearance
+      billboard: false, // Lines follow terrain
+      onHover: (info: { object?: TransmissionLine }) => {
+        // Only update hover if not persistent (clicked)
+        if (!isLineTooltipPersistent) {
+          setHoveredLine(info.object || null);
+        }
+      },
+      updateTriggers: {
+        data: hifldLines.length, // Force update when data changes
+      },
     })
-    ].filter(Boolean);
-  }, [filteredPowerPlants, showPowerPlants, showWfsCables, wfsCables, sizeMultiplier, capacityWeight, sizeByOption, setHoverInfo, powerRange]);
+    ];
+    
+    const filteredLayers = layerList.filter(Boolean);
+    return filteredLayers;
+  }, [filteredPowerPlants, showPowerPlants, showWfsCables, wfsCables, showHifldLines, hifldLines, sizeMultiplier, capacityWeight, sizeByOption, setHoverInfo, powerRange, isLineTooltipPersistent]);
 
   return (
     <div className="app-container">
@@ -648,12 +757,26 @@ function App() {
           <span>Warning: Only {powerPlants.length} power plants loaded. Data may be incomplete.</span>
         </div>
       )}
+      
+      {/* HIFLD Loading Indicator */}
+      {loadingHifld && (
+        <div className="data-warning" style={{ backgroundColor: 'rgba(0, 100, 200, 0.1)', borderColor: 'rgba(0, 100, 200, 0.3)' }}>
+          <span>⏳ Loading HIFLD transmission lines... This may take 10-30 seconds.</span>
+        </div>
+      )}
+      
+      {/* HIFLD Data Status Message */}
+      {!loadingHifld && hifldLines.length > 0 && showHifldLines && (
+        <div className="data-warning" style={{ backgroundColor: 'rgba(0, 150, 0, 0.1)', borderColor: 'rgba(0, 150, 0, 0.3)' }}>
+          <span>✅ {hifldLines.length} transmission lines loaded and displayed.</span>
+        </div>
+      )}
 
       <div className="map-container">
         <DeckGL
           initialViewState={{
             longitude: -95,
-            latitude: 55,
+            latitude: 40,
             zoom: 3,
             pitch: 0,
             bearing: 0
@@ -668,6 +791,18 @@ function App() {
               setIsTooltipPersistent(true);
               setPersistentPlant(info.object);
               return true;
+            }
+            if (info.object && info.layer?.id === 'hifld-lines') {
+              event.stopPropagation();
+              setHoveredLine(info.object);
+              setIsLineTooltipPersistent(true);
+              setPersistentLine(info.object);
+              return true;
+            }
+            // Click on empty space - clear hover but keep persistent
+            if (!info.object) {
+              setHoverInfo(null);
+              setHoveredLine(null);
             }
             return false;
           }}
@@ -686,8 +821,10 @@ function App() {
       <SidePanel
         showPowerPlants={showPowerPlants}
         showWfsCables={showWfsCables}
+        showHifldLines={showHifldLines}
         onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
+        onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
         allStatuses={allStatuses}
@@ -750,9 +887,11 @@ function App() {
          isCalculating={sliderValue !== debouncedDistance}
        />
 
-        {/* Unified Info Panel */}
-        {(hoverInfo || (isTooltipPersistent && persistentPlant)) && (
-          <div className="info-panel">
+        {/* Info Panels Container - Stacked Vertically */}
+        <div className="info-panel-container">
+          {/* Unified Info Panel - Power Plant */}
+          {(hoverInfo || (isTooltipPersistent && persistentPlant)) && (
+            <div className="info-panel plant-panel">
             {/* Close button only when persistent */}
             {isTooltipPersistent && (
               <button
@@ -859,7 +998,79 @@ function App() {
                );
              })()}
            </div>
-         )}
+          )}
+
+          {/* HIFLD Transmission Line Info Panel */}
+          {(hoveredLine || (isLineTooltipPersistent && persistentLine)) && (
+            <div className="info-panel line-panel">
+            {/* Close button only when persistent */}
+            {isLineTooltipPersistent && (
+              <button
+                className="close-button"
+                onClick={() => {
+                  setIsLineTooltipPersistent(false);
+                  setHoveredLine(null);
+                  setPersistentLine(null);
+                }}
+                aria-label="Close tooltip"
+              >
+                <X size={16} />
+              </button>
+            )}
+            {(() => {
+              const line = hoveredLine || persistentLine;
+              if (!line) return null;
+              
+              // Convert meters to kilometers for better readability
+              const lengthKm = line.properties.shapeLength 
+                ? (line.properties.shapeLength / 1000).toFixed(2) 
+                : null;
+              
+              return (
+                <>
+                  <h3>Transmission Line</h3>
+                  {line.properties.id && (
+                    <p><strong>ID:</strong> {line.properties.id}</p>
+                  )}
+                  {line.properties.owner && (
+                    <p><strong>Owner:</strong> {line.properties.owner}</p>
+                  )}
+                  {line.properties.voltage && (
+                    <p><strong>Voltage:</strong> {line.properties.voltage} kV</p>
+                  )}
+                  {line.properties.voltClass && (
+                    <p><strong>Voltage Class:</strong> {line.properties.voltClass} kV</p>
+                  )}
+                  {line.properties.type && (
+                    <p><strong>Type:</strong> {line.properties.type}</p>
+                  )}
+                  {line.properties.status && (
+                    <p><strong>Status:</strong> {line.properties.status}</p>
+                  )}
+                  {lengthKm && (
+                    <p><strong>Length:</strong> {lengthKm} km ({line.properties.shapeLength?.toFixed(0)} m)</p>
+                  )}
+                  {line.properties.sub1 && (
+                    <p><strong>Substation 1:</strong> {line.properties.sub1}</p>
+                  )}
+                  {line.properties.sub2 && (
+                    <p><strong>Substation 2:</strong> {line.properties.sub2}</p>
+                  )}
+                  {line.coordinates && line.coordinates.length > 0 && (
+                    <p><strong>Start:</strong> {line.coordinates[0][1].toFixed(4)}, {line.coordinates[0][0].toFixed(4)}</p>
+                  )}
+                  {line.coordinates && line.coordinates.length > 1 && (
+                    <p><strong>End:</strong> {line.coordinates[line.coordinates.length - 1][1].toFixed(4)}, {line.coordinates[line.coordinates.length - 1][0].toFixed(4)}</p>
+                  )}
+                  {line.coordinates && line.coordinates.length > 2 && (
+                    <p><strong>Coordinate Points:</strong> {line.coordinates.length}</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          )}
+        </div>
     </div>
   );
 }
