@@ -629,6 +629,7 @@ body {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .theme-toggle {
@@ -644,6 +645,36 @@ body {
   transition: all 0.2s ease;
   width: 40px;
   height: 40px;
+}
+
+.lock-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #374151;
+  cursor: pointer;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.lock-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.dark .lock-toggle {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #d1d5db;
+}
+
+.dark .lock-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .theme-toggle:hover {

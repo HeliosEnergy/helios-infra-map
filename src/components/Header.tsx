@@ -1,10 +1,12 @@
 import React from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { Globe, Settings, Sun, Moon } from 'lucide-react';
+import { Globe, Settings, Sun, Moon, Lock } from 'lucide-react';
 import { NavLink } from 'react-router-dom'; // Import NavLink
+import { usePasswordGate } from '../contexts/PasswordGateContext';
 
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
+  const { isGateEnabled, lockApp } = usePasswordGate();
 
   return (
     <header className="header">
@@ -36,6 +38,12 @@ const Header: React.FC = () => {
           </a>
         </nav>
         <div className="header-right">
+          {isGateEnabled && (
+            <button onClick={lockApp} className="lock-toggle" aria-label="Lock app">
+              <Lock size={16} />
+              <span>Lock</span>
+            </button>
+          )}
           <button onClick={toggleTheme} className="theme-toggle">
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
           </button>
