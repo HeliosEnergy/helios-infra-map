@@ -9,6 +9,7 @@ import type { TransmissionLine } from './models/TransmissionLine';
 
 import { loadWfsCableData } from './utils/wfsDataLoader';
 import { loadHifldData } from './utils/hifldDataLoader';
+import { HifldCache } from './utils/cache';
 import { loadAndProcessAllPowerPlants } from './utils/unifiedPowerPlantProcessor';
 import { isPointNearLine } from './utils/geoUtils';
 import type { LineSegment } from './utils/spatialIndex';
@@ -253,6 +254,9 @@ function App() {
   const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [loadingHifld, setLoadingHifld] = useState<boolean>(false);
+  const [hifldLoadingMessage, setHifldLoadingMessage] = useState<string>('Loading HIFLD transmission lines...');
+  const [hifldProgress, setHifldProgress] = useState<number>(0);
+  const [hifldProgressCount, setHifldProgressCount] = useState<number>(0);
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
   const [hoveredLine, setHoveredLine] = useState<TransmissionLine | null>(null);
   // State for persistent tooltip for transmission lines
@@ -387,6 +391,42 @@ function App() {
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
   };
 
+  // Pre-load HIFLD data in background on app start (for instant loading later)
+  useEffect(() => {
+    // Start loading HIFLD data immediately in background
+    // This ensures data is cached and ready when user enables the toggle
+    // We don't set state here - just cache the data for instant retrieval later
+    loadHifldData(
+      (freshData) => {
+        // When fresh data arrives in background, update state if toggle is already enabled
+        setHifldLines((currentLines) => {
+          // Only update if we don't have data yet or if toggle is enabled
+          if (currentLines.length === 0 && showHifldLines) {
+            console.log(`✅ Background HIFLD data refreshed: ${freshData.length} lines`);
+            return freshData;
+          }
+          return currentLines;
+        });
+      },
+      (progress, message, count) => {
+        // Only show progress if toggle is enabled and we're actively loading
+        if (showHifldLines && hifldLines.length === 0) {
+          setHifldProgress(progress);
+          setHifldLoadingMessage(message);
+          setHifldProgressCount(count);
+        }
+      }
+    ).then((data) => {
+      // Cache is now ready - data will be retrieved instantly when toggle is enabled
+      if (data.length > 0) {
+        console.log(`✅ HIFLD data pre-cached: ${data.length} lines (ready for instant display)`);
+      }
+    }).catch((error) => {
+      console.warn('Background HIFLD pre-load failed (non-critical):', error);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - intentionally ignore dependencies
+
   // Load data on component mount
   useEffect(() => {
     const loadData = async () => {
@@ -399,7 +439,7 @@ function App() {
         // Load WFS submarine cable data (unchanged)
         const wfsCableData = await loadWfsCableData();
 
-        // HIFLD data will be loaded when toggle is enabled (on-demand loading)
+        // HIFLD data is pre-loaded in background (see useEffect above)
 
         // Add validation to check if we have sufficient data
         if (powerPlantData.length < 500) {
@@ -510,35 +550,104 @@ function App() {
   });
   
 
-  // Load HIFLD data when toggle is enabled
+  // Load HIFLD data when toggle is enabled - instant display with background refresh
   useEffect(() => {
     if (showHifldLines && hifldLines.length === 0 && !loadingHifld) {
+      // Show loading indicator immediately
       setLoadingHifld(true);
       
-      // Add a timeout to prevent infinite loading (210 seconds - allow time for many pages)
-      const loadTimeout = setTimeout(() => {
-        console.error('❌ HIFLD data loading timeout after 210 seconds');
+      // Check if we have cached data first (synchronous localStorage check for instant display)
+      const quickCacheCheck = HifldCache.get();
+      if (quickCacheCheck && quickCacheCheck.length >= 100) {
+        // We have cached data - show it instantly
+        console.log(`✅ Displaying cached HIFLD data instantly: ${quickCacheCheck.length} lines`);
+        setHifldLines(quickCacheCheck);
         setLoadingHifld(false);
-        setHifldLines([]);
-      }, 210000); // 210 second max timeout (allows for 200s fetch + buffer)
+        setHifldLoadingMessage('Loading HIFLD transmission lines...');
+        
+        // Load fresh data in background and update when ready
+        setHifldLoadingMessage('Refreshing data in background...');
+        setHifldProgress(0);
+        loadHifldData(
+          (freshData) => {
+            console.log(`✅ Fresh HIFLD data received: ${freshData.length} lines`);
+            setHifldLines(freshData);
+            setHifldProgress(100);
+          },
+          (progress, message, count) => {
+            setHifldProgress(progress);
+            setHifldLoadingMessage(message);
+            setHifldProgressCount(count);
+          },
+          (dataChunk) => {
+            // Progressive update - add new lines as they arrive
+            setHifldLines((currentLines) => {
+              const existingIds = new Set(currentLines.map(line => line.id));
+              const newLines = dataChunk.filter(line => !existingIds.has(line.id));
+              return [...currentLines, ...newLines];
+            });
+          }
+        ).catch((error) => {
+          console.warn('Background refresh failed (non-critical):', error);
+          setHifldProgress(0);
+        });
+        return;
+      }
       
-      loadHifldData()
+      // No cached data in localStorage - check IndexedDB and fetch if needed
+      setHifldLoadingMessage('Loading HIFLD transmission lines...');
+      setHifldProgress(1); // Start at 1% so progress bar is visible
+      setHifldProgressCount(0);
+      
+      // Load with progress callback and progressive data chunks
+      loadHifldData(
+        (freshData) => {
+          // This callback is called when fresh data arrives (after cached data is returned)
+          console.log(`✅ Fresh HIFLD data received: ${freshData.length} lines`);
+          setHifldLines(freshData);
+          setLoadingHifld(false);
+          setHifldProgress(100);
+          setHifldLoadingMessage(`Loaded ${freshData.length} transmission lines`);
+        },
+        (progress, message, count) => {
+          // Progress callback for fetch progress
+          setHifldProgress(progress);
+          setHifldLoadingMessage(message);
+          setHifldProgressCount(count);
+        },
+        (dataChunk) => {
+          // Progressive data chunk callback - add lines as they load
+          setHifldLines((currentLines) => {
+            // Merge new chunk with existing lines, avoiding duplicates
+            const existingIds = new Set(currentLines.map(line => line.id));
+            const newLines = dataChunk.filter(line => !existingIds.has(line.id));
+            return [...currentLines, ...newLines];
+          });
+        }
+      )
         .then((data) => {
-          clearTimeout(loadTimeout);
-          console.log(`✅ Loaded ${data.length} HIFLD transmission lines`);
-          setHifldLines(data);
+          // This returns immediately with cached data (if available) or fresh data
           if (data.length > 0) {
-            console.log(`💡 HIFLD data ready - ${data.length} transmission lines available`);
+            console.log(`✅ HIFLD data loaded: ${data.length} lines`);
+            setHifldLines(data);
+            setLoadingHifld(false);
+            setHifldProgress(100);
+            setHifldLoadingMessage(`Loaded ${data.length} transmission lines`);
+          } else {
+            // No data available
+            console.log('⚠️ No HIFLD data available');
+            setHifldLines([]);
+            setLoadingHifld(false);
+            setHifldProgress(0);
+            setHifldLoadingMessage('No data available');
           }
         })
         .catch((error) => {
-          clearTimeout(loadTimeout);
           console.error('❌ Failed to load HIFLD data:', error);
           setHifldLines([]);
-        })
-        .finally(() => {
-          clearTimeout(loadTimeout);
           setLoadingHifld(false);
+          setHifldProgress(0);
+          setHifldLoadingMessage('Failed to load data');
         });
     }
   }, [showHifldLines, hifldLines.length, loadingHifld]);
@@ -756,17 +865,46 @@ function App() {
         </div>
       )}
       
-      {/* HIFLD Loading Indicator */}
-      {loadingHifld && (
+      {/* HIFLD Loading Indicator with Progress Bar */}
+      {showHifldLines && (loadingHifld || hifldProgress > 0) && hifldLines.length === 0 && (
         <div className="data-warning" style={{ backgroundColor: 'rgba(0, 100, 200, 0.1)', borderColor: 'rgba(0, 100, 200, 0.3)' }}>
-          <span>⏳ Loading HIFLD transmission lines... This may take 10-30 seconds.</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>⏳ {hifldLoadingMessage}</span>
+              {hifldProgressCount > 0 && (
+                <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                  {hifldProgressCount.toLocaleString()} lines
+                </span>
+              )}
+            </div>
+            <div style={{ 
+              width: '100%', 
+              height: '6px', 
+              backgroundColor: 'rgba(0, 0, 0, 0.1)', 
+              borderRadius: '3px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${hifldProgress}%`,
+                height: '100%',
+                backgroundColor: '#0066cc',
+                transition: 'width 0.3s ease',
+                borderRadius: '3px'
+              }} />
+            </div>
+            {hifldProgress > 0 && (
+              <div style={{ fontSize: '0.85rem', opacity: 0.7, textAlign: 'right' }}>
+                {Math.round(hifldProgress)}%
+              </div>
+            )}
+          </div>
         </div>
       )}
       
       {/* HIFLD Data Status Message */}
       {!loadingHifld && hifldLines.length > 0 && showHifldLines && (
         <div className="data-warning" style={{ backgroundColor: 'rgba(0, 150, 0, 0.1)', borderColor: 'rgba(0, 150, 0, 0.3)' }}>
-          <span>✅ {hifldLines.length} transmission lines loaded and displayed.</span>
+          <span>✅ {hifldLines.length.toLocaleString()} transmission lines loaded and displayed.</span>
         </div>
       )}
 

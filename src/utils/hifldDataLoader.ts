@@ -1,5 +1,6 @@
 import type { TransmissionLine } from '../models/TransmissionLine';
 import { HifldCache } from './cache';
+import { indexedDbCache } from './indexedDbCache';
 
 interface GeoJsonFeature {
   type: string;
@@ -24,12 +25,18 @@ interface GeoJsonObject {
 // HIFLD ArcGIS REST API endpoint (via proxy)
 const HIFLD_BASE_URL = '/api/hifld-proxy';
 
+// S3 API endpoint for pre-processed HIFLD data (via server-side proxy for private S3 access)
+const HIFLD_S3_API_URL = '/api/hifld-s3';
+
 // HIFLD cache now uses compressed caching via HifldCache (similar to CableCache)
 
 /**
  * Fetch HIFLD data from ArcGIS REST API with pagination
  */
-async function fetchHifldData(): Promise<TransmissionLine[]> {
+async function fetchHifldData(
+  onProgress?: (progress: number, message: string, count: number) => void,
+  onDataChunk?: (data: TransmissionLine[]) => void
+): Promise<TransmissionLine[]> {
   const allFeatures: TransmissionLine[] = [];
   let offset = 0;
   const pageSize = 2000; // Page size for requests
@@ -49,9 +56,19 @@ async function fetchHifldData(): Promise<TransmissionLine[]> {
   }, 180000);
 
   console.log('🔄 Fetching HIFLD transmission line data...');
+  
+  if (onProgress) {
+    onProgress(0, 'Starting to fetch HIFLD data...', 0);
+  }
 
   while (hasMore && pageCount < maxPages) {
     pageCount++;
+    
+    // Report progress
+    if (onProgress) {
+      const progress = Math.min(95, (pageCount / maxPages) * 90); // Use 0-90% for fetching
+      onProgress(progress, `Fetching page ${pageCount}/${maxPages}...`, allFeatures.length);
+    }
     const params = new URLSearchParams({
       where: '1=1', // Get all features
       outFields: '*', // Get all fields
@@ -161,9 +178,21 @@ async function fetchHifldData(): Promise<TransmissionLine[]> {
         }
       });
 
-              console.log(`Fetched ${data.features.length} features (total: ${allFeatures.length}) at offset ${offset}`);
+      // Emit the new chunk of data for progressive rendering
+      if (onDataChunk && allFeatures.length > 0) {
+        const newChunk = allFeatures.slice(-data.features.length); // Get just the new lines from this page
+        onDataChunk(newChunk);
+      }
 
-              // Check if we got fewer features than requested (last page)
+      console.log(`Fetched ${data.features.length} features (total: ${allFeatures.length}) at offset ${offset}`);
+
+      // Report progress with current count
+      if (onProgress) {
+        const progress = Math.min(95, (pageCount / maxPages) * 90);
+        onProgress(progress, `Loaded ${allFeatures.length.toLocaleString()} lines (page ${pageCount}/${maxPages})...`, allFeatures.length);
+      }
+
+      // Check if we got fewer features than requested (last page)
               if (data.features.length < pageSize) {
                 // Got fewer features than requested, we're done
                 console.log(`Received ${data.features.length} features (less than pageSize ${pageSize}), stopping pagination - reached end of data`);
@@ -210,6 +239,11 @@ async function fetchHifldData(): Promise<TransmissionLine[]> {
 
   console.log(`✅ Total HIFLD transmission lines loaded: ${allFeatures.length}`);
   
+  // Report completion
+  if (onProgress) {
+    onProgress(95, `Processing ${allFeatures.length} transmission lines...`, allFeatures.length);
+  }
+  
   // Log data coverage info
   if (allFeatures.length < 1000) {
     console.warn(`⚠️ Warning: Only loaded ${allFeatures.length} transmission lines. Data may be incomplete.`);
@@ -242,53 +276,239 @@ async function fetchHifldData(): Promise<TransmissionLine[]> {
   return simplifiedFeatures;
 }
 
+const HIFLD_CACHE_KEY = 'hifld-transmission-lines';
+const HIFLD_CACHE_VERSION = 'v4'; // Increment to force refresh
+const HIFLD_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 /**
- * Load HIFLD transmission line data with caching
- * Similar pattern to WFS cable data loading
+ * Get cached HIFLD data from IndexedDB (primary) or localStorage (fallback)
  */
-export async function loadHifldData(): Promise<TransmissionLine[]> {
-  // Try cache first (uses compressed caching)
-  const cachedData = HifldCache.get();
-  if (cachedData && cachedData.length >= 100) {
-    console.log(`✅ Using cached HIFLD data (${cachedData.length} lines)`);
-    return cachedData;
-  } else if (cachedData && cachedData.length < 100) {
-    console.log(`⚠️ Cached data has only ${cachedData.length} lines, fetching fresh data...`);
-    // Clear the incomplete cache
-    HifldCache.clear();
+async function getCachedHifldData(): Promise<TransmissionLine[] | null> {
+  // Try IndexedDB first (better for large datasets)
+  if (indexedDbCache.isAvailable()) {
+    try {
+      const cached = await indexedDbCache.get<TransmissionLine[]>(HIFLD_CACHE_KEY, HIFLD_MAX_AGE_MS);
+      if (cached && cached.length >= 100) {
+        console.log(`✅ Using IndexedDB cached HIFLD data (${cached.length} lines)`);
+        return cached;
+      }
+    } catch (error) {
+      console.warn('IndexedDB cache read failed, trying localStorage:', error);
+    }
   }
 
-  // Fetch fresh data from API with overall timeout
+  // Fallback to localStorage cache
+  const cachedData = HifldCache.get();
+  if (cachedData && cachedData.length >= 100) {
+    console.log(`✅ Using localStorage cached HIFLD data (${cachedData.length} lines)`);
+    // Migrate to IndexedDB if available
+    if (indexedDbCache.isAvailable()) {
+      indexedDbCache.set(HIFLD_CACHE_KEY, cachedData, HIFLD_CACHE_VERSION).catch(() => {
+        // Ignore migration errors
+      });
+    }
+    return cachedData;
+  }
+
+  return null;
+}
+
+/**
+ * Store HIFLD data in both IndexedDB and localStorage (for redundancy)
+ */
+async function cacheHifldData(data: TransmissionLine[]): Promise<void> {
+  if (data.length < 100) {
+    console.warn(`⚠️ Not caching data - only ${data.length} lines (too few)`);
+    return;
+  }
+
+  // Store in IndexedDB (primary)
+  if (indexedDbCache.isAvailable()) {
+    const indexedDbSuccess = await indexedDbCache.set(HIFLD_CACHE_KEY, data, HIFLD_CACHE_VERSION);
+    if (indexedDbSuccess) {
+      console.log(`✅ Cached ${data.length} HIFLD transmission lines in IndexedDB`);
+    } else {
+      console.warn('⚠️ Failed to cache HIFLD data in IndexedDB');
+    }
+  }
+
+  // Also store in localStorage as backup (compressed)
+  const localStorageSuccess = HifldCache.set(data);
+  if (localStorageSuccess) {
+    console.log(`✅ Also cached ${data.length} HIFLD transmission lines in localStorage (compressed)`);
+  } else {
+    console.warn('⚠️ Failed to cache HIFLD data in localStorage - may be too large');
+  }
+}
+
+/**
+ * Load HIFLD data from S3 (fast, pre-processed)
+ */
+async function loadHifldFromS3(
+  onProgress?: (progress: number, message: string, count: number) => void
+): Promise<TransmissionLine[] | null> {
+  try {
+    if (onProgress) {
+      onProgress(10, 'Loading HIFLD data from S3...', 0);
+    }
+    
+    console.log('🔄 Fetching HIFLD data from S3 via API proxy...');
+    const response = await fetch(HIFLD_S3_API_URL, {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`⚠️ S3 fetch failed: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    if (onProgress) {
+      onProgress(50, 'Parsing HIFLD data...', 0);
+    }
+
+    const data: TransmissionLine[] = await response.json();
+    
+    if (onProgress) {
+      onProgress(100, `Loaded ${data.length} transmission lines from S3`, data.length);
+    }
+
+    console.log(`✅ Loaded ${data.length} HIFLD transmission lines from S3`);
+    return data;
+  } catch (error) {
+    console.warn('⚠️ Failed to load HIFLD data from S3:', error);
+    return null;
+  }
+}
+
+/**
+ * Load HIFLD transmission line data with instant cache return and background refresh
+ * Priority: 1. Cache, 2. S3, 3. API
+ */
+export async function loadHifldData(
+  onProgress?: (data: TransmissionLine[]) => void,
+  onFetchProgress?: (progress: number, message: string, count: number) => void,
+  onDataChunk?: (data: TransmissionLine[]) => void
+): Promise<TransmissionLine[]> {
+  // 1. Get cached data immediately
+  const cachedData = await getCachedHifldData();
+  
+  // If we have good cached data, return it immediately and refresh in background
+  if (cachedData && cachedData.length >= 1000) {
+    console.log(`✅ Returning cached HIFLD data instantly (${cachedData.length} lines)`);
+    
+    // Trigger background refresh from S3 (don't await)
+    loadHifldFromS3(onFetchProgress)
+      .then((s3Data) => {
+        if (s3Data && s3Data.length > cachedData.length) {
+          console.log(`✅ S3 data is newer (${s3Data.length} vs ${cachedData.length} lines), updating...`);
+          cacheHifldData(s3Data);
+          if (onProgress) {
+            onProgress(s3Data);
+          }
+        }
+      })
+      .catch((error) => {
+        console.warn('Background S3 refresh failed:', error);
+      });
+    
+    return cachedData;
+  }
+
+  // 2. Try S3 (fast, pre-processed data) - but don't wait if it fails
+  if (onFetchProgress) {
+    onFetchProgress(5, 'Checking for pre-processed data...', 0);
+  }
+  
+  // Try S3 with timeout - don't block if it fails
+  const s3Promise = loadHifldFromS3(onFetchProgress).catch(() => null);
+  const s3Timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), 3000); // 3 second timeout for S3
+  });
+  
+  const s3Data = await Promise.race([s3Promise, s3Timeout]);
+  
+  if (s3Data && s3Data.length >= 100) {
+    console.log(`✅ Loaded HIFLD data from S3 (${s3Data.length} lines)`);
+    // Emit S3 data in chunks for progressive rendering
+    if (onDataChunk && s3Data.length > 0) {
+      // Emit in chunks of 2000 for smooth progressive rendering
+      const chunkSize = 2000;
+      for (let i = 0; i < s3Data.length; i += chunkSize) {
+        const chunk = s3Data.slice(i, i + chunkSize);
+        onDataChunk(chunk);
+        // Small delay to allow UI to update
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    }
+    // Cache it for next time
+    await cacheHifldData(s3Data);
+    if (onProgress) {
+      onProgress(s3Data);
+    }
+    return s3Data;
+  }
+
+  // 3. Fallback to API (slow, but always works)
+  if (onFetchProgress) {
+    onFetchProgress(10, 'Fetching from API... This may take 10-30 seconds.', 0);
+  }
+  
+  if (cachedData && cachedData.length < 1000) {
+    console.log(`⚠️ Cached data has only ${cachedData.length} lines, fetching from API...`);
+  } else {
+    console.log('🔄 No cached or S3 data found, fetching from API...');
+  }
+
+  return refreshHifldDataInBackground(onProgress, onFetchProgress, onDataChunk);
+}
+
+/**
+ * Refresh HIFLD data from API in background
+ */
+async function refreshHifldDataInBackground(
+  onProgress?: (data: TransmissionLine[]) => void,
+  onFetchProgress?: (progress: number, message: string, count: number) => void,
+  onDataChunk?: (data: TransmissionLine[]) => void
+): Promise<TransmissionLine[]> {
   try {
     console.log('🔄 Fetching fresh HIFLD data from API...');
     
-    // Add overall timeout wrapper (200 seconds total - allow more time for many pages)
-    const fetchPromise = fetchHifldData();
+    // Add overall timeout wrapper (200 seconds total)
+    const fetchPromise = fetchHifldData(onFetchProgress, onDataChunk);
     const timeoutPromise = new Promise<TransmissionLine[]>((_, reject) => {
       setTimeout(() => reject(new Error('HIFLD data fetch timeout after 200 seconds')), 200000);
     });
     
     const freshData = await Promise.race([fetchPromise, timeoutPromise]);
+    
+    // Report processing progress
+    if (onFetchProgress) {
+      onFetchProgress(98, 'Caching data...', freshData.length);
+    }
 
-    // Cache using compressed storage (handles large data automatically)
-    if (freshData.length >= 100) {
-      const cacheResult = HifldCache.set(freshData);
-      if (!cacheResult) {
-        console.warn('⚠️ Failed to cache HIFLD data - may be too large even with compression');
-      } else {
-        console.log(`✅ Cached ${freshData.length} HIFLD transmission lines (compressed)`);
-      }
-    } else {
-      console.warn(`⚠️ Not caching data - only ${freshData.length} lines (too few)`);
+    // Cache the fresh data
+    await cacheHifldData(freshData);
+    
+    // Report completion
+    if (onFetchProgress) {
+      onFetchProgress(100, `Loaded ${freshData.length} transmission lines`, freshData.length);
+    }
+
+    // Notify progress callback if provided
+    if (onProgress) {
+      onProgress(freshData);
     }
 
     return freshData;
   } catch (error) {
     console.error('❌ Failed to fetch HIFLD data:', error);
     
-    // If we have cached data (even if incomplete), return it as fallback
+    // Try to return cached data as fallback
+    const cachedData = await getCachedHifldData();
     if (cachedData && cachedData.length > 0) {
-      console.warn(`⚠️ Using incomplete cached data (${cachedData.length} lines) as fallback`);
+      console.warn(`⚠️ Using cached data (${cachedData.length} lines) as fallback after fetch error`);
       return cachedData;
     }
     
@@ -298,25 +518,41 @@ export async function loadHifldData(): Promise<TransmissionLine[]> {
 }
 
 /**
- * Clear the cached HIFLD data
+ * Clear the cached HIFLD data from both IndexedDB and localStorage
  */
-export function clearHifldCache(): void {
+export async function clearHifldCache(): Promise<void> {
+  // Clear IndexedDB cache
+  if (indexedDbCache.isAvailable()) {
+    await indexedDbCache.clear(HIFLD_CACHE_KEY);
+  }
+  
+  // Clear localStorage cache
   HifldCache.clear();
-  console.log('HIFLD cache cleared');
+  console.log('✅ HIFLD cache cleared from both IndexedDB and localStorage');
 }
 
 /**
  * Get HIFLD cache statistics
  */
-export function getHifldCacheStats() {
+export async function getHifldCacheStats() {
   try {
-    const cached = HifldCache.get();
-    if (!cached) {
-      return { cached: false, count: 0 };
+    // Check IndexedDB first
+    if (indexedDbCache.isAvailable()) {
+      const indexedDbData = await indexedDbCache.get<TransmissionLine[]>(HIFLD_CACHE_KEY);
+      if (indexedDbData && indexedDbData.length >= 100) {
+        return { cached: true, count: indexedDbData.length, source: 'indexeddb' };
+      }
     }
-    return { cached: true, count: cached.length };
+
+    // Fallback to localStorage
+    const cached = HifldCache.get();
+    if (cached && cached.length >= 100) {
+      return { cached: true, count: cached.length, source: 'localstorage' };
+    }
+
+    return { cached: false, count: 0, source: null };
   } catch {
-    return { cached: false, count: 0 };
+    return { cached: false, count: 0, source: null };
   }
 }
 

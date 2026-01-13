@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import TabNavigation, { type TabItem } from './TabNavigation';
 import LayersFiltersTab from './LayersFiltersTab';
 import LegendTab from './LegendTab';
@@ -166,6 +166,14 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onToggleCollapsed,
 }) => {
   const [activeTab, setActiveTab] = useState<'layers' | 'legend' | 'visualization' | 'data'>('layers');
+  const [hifldCacheStats, setHifldCacheStats] = useState<{ cached: boolean; count: number; source?: string | null }>({ cached: false, count: 0 });
+  
+  // Load HIFLD cache stats
+  useEffect(() => {
+    getHifldCacheStats().then(setHifldCacheStats).catch(() => {
+      setHifldCacheStats({ cached: false, count: 0 });
+    });
+  }, []);
 
   // Define tabs
   const tabs: TabItem[] = useMemo(() => [
@@ -272,7 +280,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
       case 'data': {
         const cacheStats = getCableCacheStats();
-        const hifldCacheStats = getHifldCacheStats();
         return (
           <div className="tab-content-placeholder">
             <h3>Data & Export</h3>
@@ -303,8 +310,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
                   Clear EIA Cache
                 </button>
                 <button
-                  onClick={() => {
-                    clearHifldCache();
+                  onClick={async () => {
+                    await clearHifldCache();
                     window.location.reload(); // Reload to fetch fresh HIFLD data
                   }}
                   className="clear-cache-btn"
