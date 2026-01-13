@@ -257,6 +257,7 @@ function App() {
   const [hifldLoadingMessage, setHifldLoadingMessage] = useState<string>('Loading HIFLD transmission lines...');
   const [hifldProgress, setHifldProgress] = useState<number>(0);
   const [hifldProgressCount, setHifldProgressCount] = useState<number>(0);
+  const [showHifldSuccessMessage, setShowHifldSuccessMessage] = useState<boolean>(false);
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
   const [hoveredLine, setHoveredLine] = useState<TransmissionLine | null>(null);
   // State for persistent tooltip for transmission lines
@@ -652,6 +653,25 @@ function App() {
     }
   }, [showHifldLines, hifldLines.length, loadingHifld]);
 
+  // Auto-hide success message after 3 seconds
+  useEffect(() => {
+    if (!loadingHifld && hifldLines.length > 0 && showHifldLines) {
+      // Show the success message
+      setShowHifldSuccessMessage(true);
+      
+      // Hide it after 3 seconds
+      const timer = setTimeout(() => {
+        setShowHifldSuccessMessage(false);
+      }, 3000);
+      
+      // Cleanup timer on unmount or when dependencies change
+      return () => clearTimeout(timer);
+    } else {
+      // Hide message if loading starts again or toggle is turned off
+      setShowHifldSuccessMessage(false);
+    }
+  }, [loadingHifld, hifldLines.length, showHifldLines]);
+
   // Get all unique sources from the data for the legend
   const allSourcesInData = Array.from(new Set(powerPlants.map(plant => plant.source))).sort();
 
@@ -901,8 +921,8 @@ function App() {
         </div>
       )}
       
-      {/* HIFLD Data Status Message */}
-      {!loadingHifld && hifldLines.length > 0 && showHifldLines && (
+      {/* HIFLD Data Status Message - Auto-hides after 3 seconds */}
+      {showHifldSuccessMessage && (
         <div className="data-warning" style={{ backgroundColor: 'rgba(0, 150, 0, 0.1)', borderColor: 'rgba(0, 150, 0, 0.3)' }}>
           <span>✅ {hifldLines.length.toLocaleString()} transmission lines loaded and displayed.</span>
         </div>
