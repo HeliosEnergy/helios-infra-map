@@ -259,19 +259,22 @@ async function fetchHifldData(
     return [];
   }
   
-  // Simplify geometries for very long lines to reduce visual clutter
+  // Simplify geometries more aggressively to reduce rendering load
   // Keep all lines but simplify coordinates if they have too many points
   const simplifiedFeatures = allFeatures.map(line => {
-    if (line.coordinates.length > 100) {
-      // Simplify by keeping every Nth point for very long lines
-      const step = Math.ceil(line.coordinates.length / 100);
-      const simplified = line.coordinates.filter((_, index) => index % step === 0 || index === line.coordinates.length - 1);
+    // More aggressive simplification: max 50 points per line for better performance
+    if (line.coordinates.length > 50) {
+      const step = Math.ceil(line.coordinates.length / 50);
+      const simplified = line.coordinates.filter((_, index) => 
+        index % step === 0 || index === line.coordinates.length - 1
+      );
       return { ...line, coordinates: simplified };
     }
     return line;
   });
   
-  console.log(`ℹ️ Simplified ${allFeatures.length - simplifiedFeatures.length} long lines for better visualization`);
+  const simplifiedCount = allFeatures.filter(line => line.coordinates.length > 50).length;
+  console.log(`ℹ️ Simplified ${simplifiedCount} long lines for better performance`);
   
   return simplifiedFeatures;
 }
