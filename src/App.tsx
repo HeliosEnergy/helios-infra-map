@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Map, { NavigationControl } from 'react-map-gl';
 import DeckGL from '@deck.gl/react';
 import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
@@ -263,6 +263,8 @@ function App() {
   // State for persistent tooltip for transmission lines
   const [isLineTooltipPersistent, setIsLineTooltipPersistent] = useState<boolean>(false);
   const [persistentLine, setPersistentLine] = useState<TransmissionLine | null>(null);
+  // Ref for hover timeout to delay tooltip hiding
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // State for filtering power plants by source
   const [filteredSources, setFilteredSources] = useState<Set<string>>(new Set());
   // State for power output range filtering (0 MW to 10000 MW)
@@ -672,6 +674,16 @@ function App() {
     }
   }, [loadingHifld, hifldLines.length, showHifldLines]);
 
+  // Cleanup hover timeout on unmount or when tooltip becomes persistent
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = null;
+      }
+    };
+  }, [isLineTooltipPersistent]);
+
   // Get all unique sources from the data for the legend
   const allSourcesInData = Array.from(new Set(powerPlants.map(plant => plant.source))).sort();
 
@@ -740,6 +752,25 @@ function App() {
     return counts;
   }, [powerPlants, wfsCables]);
 
+  // Simplify HIFLD lines more aggressively for better performance (keep all lines, reduce coordinate points)
+  const simplifiedHifldLines = useMemo(() => {
+    if (!showHifldLines || hifldLines.length === 0) return [];
+    
+    // More aggressive simplification: max 30 points per line for optimal performance
+    return hifldLines.map(line => {
+      if (line.coordinates.length > 30) {
+        const step = Math.ceil(line.coordinates.length / 30);
+        return {
+          ...line,
+          coordinates: line.coordinates.filter((_, index) => 
+            index % step === 0 || index === line.coordinates.length - 1
+          )
+        };
+      }
+      return line;
+    });
+  }, [hifldLines, showHifldLines]);
+
   const layers = useMemo(() => {
     const layerList = [
       showPowerPlants && new ScatterplotLayer({
@@ -804,62 +835,78 @@ function App() {
       getWidth: 2, // Thinner cables
       onHover: () => {}
     }),
-    showHifldLines && hifldLines.length > 0 && new PathLayer({
+    showHifldLines && simplifiedHifldLines.length > 0 && new PathLayer({
       id: 'hifld-lines',
-      data: hifldLines,
+      data: simplifiedHifldLines,
       pickable: true,
-      widthMinPixels: 0.5, // Thinner lines for cleaner look
-      widthMaxPixels: 2, // Max width for visual clarity
+      widthMinPixels: 0.5,
+      widthMaxPixels: 2,
       widthScale: 1,
       widthUnits: 'pixels',
+      
+      // Performance optimizations
+      autoHighlight: false, // Disable auto-highlight for better performance
+      highlightColor: [255, 200, 0, 255],
+      
       getPath: (d: TransmissionLine) => {
-        // Verify coordinates are in correct format [lon, lat]
         if (!d.coordinates || d.coordinates.length === 0) {
-          console.warn('⚠️ Transmission line has no coordinates:', d.id);
           return [];
         }
-        // Ensure coordinates are in [lon, lat] format (GeoJSON standard)
-        // PathLayer expects coordinates as [lon, lat][] which is what we have
         return d.coordinates;
       },
+      
       getColor: (d: TransmissionLine) => {
-        // Vary color by voltage class for better visual distinction
+        // Use simpler color calculation for better performance
         const voltage = d.properties?.voltage || d.properties?.VOLTAGE;
         const voltClass = d.properties?.voltClass || d.properties?.VOLT_CLASS;
         
-        // Higher voltage = brighter/more prominent color
         if (voltClass === '765' || voltClass === '500' || (voltage && voltage >= 500)) {
-          return [0, 150, 255, 200]; // Bright blue for high voltage
+          return [0, 150, 255, 180]; // Slightly lower opacity for performance
         } else if (voltClass === '345' || voltClass === '230' || (voltage && voltage >= 230)) {
-          return [50, 120, 200, 160]; // Medium blue for medium voltage
+          return [50, 120, 200, 140];
         } else {
-          return [100, 150, 200, 120]; // Lighter blue for lower voltage
+          return [100, 150, 200, 100]; // Lower opacity for lower voltage
         }
       },
+      
       getWidth: (d: TransmissionLine) => {
-        // Vary width by voltage - higher voltage = thicker line
-        const voltage = d.properties?.voltage || d.properties?.VOLTAGE;
+        // Simplified width calculation for better performance
         const voltClass = d.properties?.voltClass || d.properties?.VOLT_CLASS;
-        
-        if (voltClass === '765' || voltClass === '500' || (voltage && voltage >= 500)) {
-          return 1.5; // Thicker for high voltage
-        } else if (voltClass === '345' || voltClass === '230' || (voltage && voltage >= 230)) {
-          return 1.0; // Medium width
-        } else {
-          return 0.8; // Thinner for lower voltage
-        }
+        if (voltClass === '765' || voltClass === '500') return 1.2;
+        if (voltClass === '345' || voltClass === '230') return 0.9;
+        return 0.7;
       },
-      getPickingRadius: 8, // Picking radius for easier clicking
-      opacity: 0.6, // Overall opacity for less visual clutter
-      capRounded: true, // Rounded line caps for smoother appearance
-      jointRounded: true, // Rounded joints for smoother appearance
-      billboard: false, // Lines follow terrain
-      onHover: (info: { object?: TransmissionLine }) => {
-        // Always update hover (like power plants) - display logic will show hoveredLine if exists, otherwise persistentLine
-        setHoveredLine(info.object || null);
-      },
+      
+      getPickingRadius: 35, // Increased for much easier interaction
+      opacity: 0.5, // Lower overall opacity for better performance
+      capRounded: false, // Disable rounded caps for better performance
+      jointRounded: false, // Disable rounded joints for better performance
+      billboard: false,
+      
+      // Performance: reduce update frequency
       updateTriggers: {
-        data: hifldLines.length, // Force update when data changes
+        data: simplifiedHifldLines.length, // Only update on data length change
+      },
+      
+      onHover: (info: { object?: TransmissionLine }) => {
+        // Clear any existing timeout
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+          hoverTimeoutRef.current = null;
+        }
+        
+        if (info.object) {
+          // Immediately show tooltip when hovering
+          setHoveredLine(info.object);
+        } else {
+          // Add a delay before hiding tooltip (unless it's persistent)
+          if (!isLineTooltipPersistent) {
+            hoverTimeoutRef.current = setTimeout(() => {
+              setHoveredLine(null);
+              hoverTimeoutRef.current = null;
+            }, 1000); // 1000ms (1 second) delay - gives user more time to read and interact
+          }
+        }
       },
     })
     ];
@@ -940,6 +987,12 @@ function App() {
           controller={true}
           layers={layers}
           getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
+          
+          // Performance optimizations
+          _typedArrayManagerProps={{
+            overAlloc: 1, // Reduce memory allocation
+            poolSize: 0 // Disable pooling for large datasets
+          }}
           onClick={(info, event) => {
             if (info.object && info.layer?.id === 'power-plants') {
               event.stopPropagation();
