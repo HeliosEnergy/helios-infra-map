@@ -257,7 +257,16 @@ const DataVisualizations: React.FC = () => {
 
   return (
     <div className="data-analysis-dashboard">
-      {/* Regional Capacity Analysis */}
+      {/* 
+        REGIONAL CAPACITY GRAPH - COMMENTED OUT
+        ==========================================
+        This graph has been temporarily commented out because it's not showing results properly.
+        The data structure needs to be figured out before this can be re-enabled.
+        
+        TO RE-ENABLE: Uncomment the section below (from the opening comment to the closing comment)
+        and ensure the eiaData structure matches what the regionalCapacityData calculation expects.
+      */}
+      {/*
       <div className="analysis-section compact">
         <h4 className="section-title">Regional Capacity (Top 8 States)</h4>
         <div className="chart-container">
@@ -286,6 +295,7 @@ const DataVisualizations: React.FC = () => {
           </ResponsiveContainer>
         </div>
       </div>
+      */}
 
       {/* Capacity Factor Analysis */}
       <div className="analysis-section">
