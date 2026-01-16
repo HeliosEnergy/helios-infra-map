@@ -333,7 +333,7 @@ function App() {
 
   // Select all sources
   const selectAllSources = () => {
-    const allSources = Array.from(new Set(powerPlants.map(plant => plant.source))).filter(source => source !== 'other');
+    const allSources = Array.from(new Set(powerPlants.map(plant => plant.source)));
     setFilteredSources(new Set(allSources));
   };
 
@@ -478,7 +478,7 @@ function App() {
         // Initialize filtered sources with all unique sources from the data
         const uniqueSources = new Set(powerPlantData.map(plant => plant.source));
         console.log('Unique sources in data:', Array.from(uniqueSources));
-        setFilteredSources(new Set(Array.from(uniqueSources).filter(source => source !== 'other')));
+        setFilteredSources(new Set(Array.from(uniqueSources)));
         
         // Extract and set all unique statuses
         const statuses = new Set(powerPlantData.map(p => p.rawData?.statusDescription || 'N/A'));
@@ -526,7 +526,7 @@ function App() {
   // Filter power plants based on selected sources, countries, power output range, proximity, status, and selected plant IDs
   const filteredPowerPlants = powerPlants.filter(plant => {
     // Existing source filtering
-    const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
+    const passesSourceFilter = filteredSources.has(plant.source);
     
     // Dynamic country filtering - if no countries are selected, show all (empty set means show all)
     const passesCountryFilter = enabledCountries.size === 0 || enabledCountries.has(plant.country);
@@ -703,7 +703,7 @@ function App() {
 
     return powerPlants.filter(plant => {
       // Check if plant passes other filters first
-      const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
+      const passesSourceFilter = filteredSources.has(plant.source);
       const passesCountryFilter =
     enabledCountries.has(plant.country);
 
@@ -735,7 +735,7 @@ function App() {
 
     return powerPlants.filter(plant => {
       // Check if plant passes other filters first
-      const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
+      const passesSourceFilter = filteredSources.has(plant.source);
       const passesCountryFilter =
     enabledCountries.has(plant.country);
 

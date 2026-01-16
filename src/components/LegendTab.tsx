@@ -63,7 +63,7 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
   // Filter and sort sources based on search and sort options
   const processedSources = useMemo(() => {
-    let sources = allSourcesInData.filter(source => source !== 'other');
+    let sources = [...allSourcesInData]; // Include 'other' now
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -74,6 +74,10 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
     // Apply sorting
     sources.sort((a, b) => {
+      // Always put 'other' at the end
+      if (a === 'other') return 1;
+      if (b === 'other') return -1;
+      
       if (sortBy === 'active') {
         const aActive = filteredSources.has(a);
         const bActive = filteredSources.has(b);
