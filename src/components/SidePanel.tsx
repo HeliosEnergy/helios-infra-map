@@ -22,6 +22,8 @@ interface SidePanelProps {
   // Filtering state
   filteredSources: Set<string>;
   onToggleSourceFilter: (source: string) => void;
+  onSelectAllSources?: () => void;
+  onDeselectAllSources?: () => void;
   allStatuses: string[];
   filteredStatuses: Set<string>;
   onToggleStatusFilter: (status: string) => void;
@@ -69,10 +71,8 @@ interface SidePanelProps {
    setSizeMultiplier: (value: number) => void;
    capacityWeight: number;
    setCapacityWeight: (value: number) => void;
-    sizeByOption: 'nameplate_capacity' | 'capacity_factor' | 'generation' | 'net_summer_capacity' | 'net_winter_capacity';
-    setSizeByOption: (value: 'nameplate_capacity' | 'capacity_factor' | 'generation' | 'net_summer_capacity' | 'net_winter_capacity') => void;
-   showSummerCapacity: boolean;
-   setShowSummerCapacity: (value: boolean) => void;
+    sizeByOption: 'nameplate_capacity' | 'capacity_factor' | 'generation';
+    setSizeByOption: (value: 'nameplate_capacity' | 'capacity_factor' | 'generation') => void;
 
   // Data
   powerPlants: PowerPlant[];
@@ -102,6 +102,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // Filtering
   filteredSources,
   onToggleSourceFilter,
+  onSelectAllSources,
+  onDeselectAllSources,
   allStatuses,
   filteredStatuses,
   onToggleStatusFilter,
@@ -147,8 +149,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
    setCapacityWeight,
    sizeByOption,
    setSizeByOption,
-   showSummerCapacity,
-   setShowSummerCapacity,
 
   // Data
   powerPlants,
@@ -253,6 +253,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
              allSourcesInData={allSourcesInData}
              filteredSources={filteredSources}
              onToggleSourceFilter={onToggleSourceFilter}
+             onSelectAllSources={onSelectAllSources}
+             onDeselectAllSources={onDeselectAllSources}
              showWfsCables={showWfsCables}
              onToggleWfsCables={onToggleWfsCables}
              powerPlantCounts={powerPlantCounts}
@@ -273,8 +275,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 setCapacityWeight={setCapacityWeight}
                 sizeByOption={sizeByOption}
                 setSizeByOption={setSizeByOption}
-                showSummerCapacity={showSummerCapacity}
-                setShowSummerCapacity={setShowSummerCapacity}
               />
         );
 

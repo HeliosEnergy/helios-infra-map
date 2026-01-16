@@ -156,6 +156,63 @@
   gap: 8px;
 }
 
+.legend-select-all-controls {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-bottom: 4px;
+}
+
+.dark .legend-select-all-controls {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.legend-select-all-btn,
+.legend-deselect-all-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  background: white;
+  color: #333;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.legend-select-all-btn:hover {
+  background: rgba(0, 123, 255, 0.1);
+  border-color: rgba(0, 123, 255, 0.3);
+  color: #007bff;
+}
+
+.legend-deselect-all-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+  border-color: rgba(220, 53, 69, 0.3);
+  color: #dc3545;
+}
+
+.dark .legend-select-all-btn,
+.dark .legend-deselect-all-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ccc;
+}
+
+.dark .legend-select-all-btn:hover {
+  background: rgba(26, 115, 232, 0.2);
+  border-color: rgba(26, 115, 232, 0.4);
+  color: #66b3ff;
+}
+
+.dark .legend-deselect-all-btn:hover {
+  background: rgba(220, 53, 69, 0.2);
+  border-color: rgba(220, 53, 69, 0.4);
+  color: #ff6b7a;
+}
+
 .legend-section {
   display: flex;
   flex-direction: column;

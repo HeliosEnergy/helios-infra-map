@@ -25,7 +25,7 @@ import ProximityDialog from './components/ProximityDialog';
 import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
 
 // SizeByOption type as per MAP_FEATURES_DOCUMENTATION.md
-type SizeByOption = 'nameplate_capacity' | 'capacity_factor' | 'generation' | 'net_summer_capacity' | 'net_winter_capacity';
+type SizeByOption = 'nameplate_capacity' | 'capacity_factor' | 'generation';
 
 // Custom hook for debouncing values
 function useDebounce<T>(value: T, delay: number): T {
@@ -306,7 +306,6 @@ function App() {
    const [sizeMultiplier, setSizeMultiplier] = useState<number>(2);
     const [capacityWeight, setCapacityWeight] = useState<number>(1);
     const [sizeByOption, setSizeByOption] = useState<SizeByOption>('nameplate_capacity');
-    const [showSummerCapacity, setShowSummerCapacity] = useState<boolean>(false);
       // State for persistent tooltip
       const [isTooltipPersistent, setIsTooltipPersistent] = useState<boolean>(false);
       const [persistentPlant, setPersistentPlant] = useState<PowerPlant | null>(null);
@@ -330,6 +329,17 @@ function App() {
       }
       return newSet;
     });
+  };
+
+  // Select all sources
+  const selectAllSources = () => {
+    const allSources = Array.from(new Set(powerPlants.map(plant => plant.source))).filter(source => source !== 'other');
+    setFilteredSources(new Set(allSources));
+  };
+
+  // Deselect all sources
+  const deselectAllSources = () => {
+    setFilteredSources(new Set());
   };
   // Toggle status filter
  const toggleStatusFilter = (status: string) => {
@@ -518,8 +528,8 @@ function App() {
     // Existing source filtering
     const passesSourceFilter = filteredSources.has(plant.source) || plant.source === 'other';
     
-    // Dynamic country filtering
-    const passesCountryFilter = enabledCountries.has(plant.country);
+    // Dynamic country filtering - if no countries are selected, show all (empty set means show all)
+    const passesCountryFilter = enabledCountries.size === 0 || enabledCountries.has(plant.country);
     
     // New power output range filtering
     const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
@@ -529,9 +539,9 @@ function App() {
     const passesCapacityFactorFilter = plantCapacityFactor === null || 
       (plantCapacityFactor >= minCapacityFactor && plantCapacityFactor <= maxCapacityFactor);
 
-    // Status filtering
+    // Status filtering - if no statuses are selected, show all (empty set means show all)
     const plantStatus = plant.rawData?.statusDescription || 'N/A';
-    const passesStatusFilter = filteredStatuses.has(plantStatus);
+    const passesStatusFilter = filteredStatuses.size === 0 || filteredStatuses.has(plantStatus);
 
     // Plant selection filtering - if any plants are selected, only show those
     const passesPlantSelectionFilter = selectedPlantIds.size === 0 || selectedPlantIds.has(plant.id);
@@ -699,7 +709,12 @@ function App() {
 
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
-      if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
+      // Capacity factor filtering
+      const plantCapacityFactor = plant.capacityFactor ?? null;
+      const passesCapacityFactorFilter = plantCapacityFactor === null || 
+        (plantCapacityFactor >= minCapacityFactor && plantCapacityFactor <= maxCapacityFactor);
+
+      if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter || !passesCapacityFactorFilter) {
         return false;
       }
 
@@ -712,7 +727,7 @@ function App() {
       }
       return false;
     }).length;
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput, minCapacityFactor, maxCapacityFactor, enabledCountries]);
 
   // Get the actual list of nearby plants for the dialog (using debounced distance)
   const nearbyPlants = useMemo(() => {
@@ -726,7 +741,12 @@ function App() {
 
       const passesPowerOutputFilter = plant.output >= minPowerOutput && plant.output <= maxPowerOutput;
 
-      if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter) {
+      // Capacity factor filtering
+      const plantCapacityFactor = plant.capacityFactor ?? null;
+      const passesCapacityFactorFilter = plantCapacityFactor === null || 
+        (plantCapacityFactor >= minCapacityFactor && plantCapacityFactor <= maxCapacityFactor);
+
+      if (!passesSourceFilter || !passesCountryFilter || !passesPowerOutputFilter || !passesCapacityFactorFilter) {
         return false;
       }
 
@@ -739,7 +759,7 @@ function App() {
       }
       return false;
     });
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput, minCapacityFactor, maxCapacityFactor, enabledCountries]);
 
   // Count power plants by source
   const powerPlantCounts = useMemo(() => {
@@ -751,25 +771,6 @@ function App() {
     counts['cables'] = wfsCables.length;
     return counts;
   }, [powerPlants, wfsCables]);
-
-  // Simplify HIFLD lines more aggressively for better performance (keep all lines, reduce coordinate points)
-  const simplifiedHifldLines = useMemo(() => {
-    if (!showHifldLines || hifldLines.length === 0) return [];
-    
-    // More aggressive simplification: max 30 points per line for optimal performance
-    return hifldLines.map(line => {
-      if (line.coordinates.length > 30) {
-        const step = Math.ceil(line.coordinates.length / 30);
-        return {
-          ...line,
-          coordinates: line.coordinates.filter((_, index) => 
-            index % step === 0 || index === line.coordinates.length - 1
-          )
-        };
-      }
-      return line;
-    });
-  }, [hifldLines, showHifldLines]);
 
   const layers = useMemo(() => {
     const layerList = [
@@ -795,12 +796,6 @@ function App() {
             break;
           case 'generation':
             value = d.historicalAvgGeneration || d.generation || d.output;
-            break;
-          case 'net_summer_capacity':
-            value = d.netSummerCapacity || d.output;
-            break;
-          case 'net_winter_capacity':
-            value = d.netWinterCapacity || d.output;
             break;
           default:
             value = d.output;
@@ -835,12 +830,12 @@ function App() {
       getWidth: 2, // Thinner cables
       onHover: () => {}
     }),
-    showHifldLines && simplifiedHifldLines.length > 0 && new PathLayer({
+    showHifldLines && hifldLines.length > 0 && new PathLayer({
       id: 'hifld-lines',
-      data: simplifiedHifldLines,
+      data: hifldLines,
       pickable: true,
-      widthMinPixels: 0.5,
-      widthMaxPixels: 2,
+      widthMinPixels: 1,
+      widthMaxPixels: 3,
       widthScale: 1,
       widthUnits: 'pixels',
       
@@ -878,14 +873,14 @@ function App() {
       },
       
       getPickingRadius: 35, // Increased for much easier interaction
-      opacity: 0.5, // Lower overall opacity for better performance
+      opacity: 0.8, // Better visibility
       capRounded: false, // Disable rounded caps for better performance
       jointRounded: false, // Disable rounded joints for better performance
       billboard: false,
       
       // Performance: reduce update frequency
       updateTriggers: {
-        data: simplifiedHifldLines.length, // Only update on data length change
+        data: hifldLines.length, // Only update on data length change
       },
       
       onHover: (info: { object?: TransmissionLine }) => {
@@ -896,16 +891,14 @@ function App() {
         }
         
         if (info.object) {
-          // Immediately show tooltip when hovering
+          // Immediately show tooltip when hovering (works like power plants)
           setHoveredLine(info.object);
         } else {
-          // Add a delay before hiding tooltip (unless it's persistent)
-          if (!isLineTooltipPersistent) {
-            hoverTimeoutRef.current = setTimeout(() => {
-              setHoveredLine(null);
-              hoverTimeoutRef.current = null;
-            }, 1000); // 1000ms (1 second) delay - gives user more time to read and interact
-          }
+          // Add a delay before hiding tooltip
+          hoverTimeoutRef.current = setTimeout(() => {
+            setHoveredLine(null);
+            hoverTimeoutRef.current = null;
+          }, 1000); // 1000ms delay - gives user time to move mouse
         }
       },
     })
@@ -1003,6 +996,7 @@ function App() {
             }
             if (info.object && info.layer?.id === 'hifld-lines') {
               event.stopPropagation();
+              // Set both hover and persistent (works like power plants)
               setHoveredLine(info.object);
               setIsLineTooltipPersistent(true);
               setPersistentLine(info.object);
@@ -1036,6 +1030,8 @@ function App() {
         onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
+        onSelectAllSources={selectAllSources}
+        onDeselectAllSources={deselectAllSources}
         allStatuses={allStatuses}
         filteredStatuses={filteredStatuses}
         onToggleStatusFilter={toggleStatusFilter}
@@ -1075,8 +1071,6 @@ function App() {
         setCapacityWeight={setCapacityWeight}
         sizeByOption={sizeByOption}
         setSizeByOption={setSizeByOption}
-        showSummerCapacity={showSummerCapacity}
-        setShowSummerCapacity={setShowSummerCapacity}
         powerPlants={powerPlants}
         allSourcesInData={allSourcesInData}
         powerPlantCounts={powerPlantCounts}
