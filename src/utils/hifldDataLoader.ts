@@ -259,12 +259,11 @@ async function fetchHifldData(
     return [];
   }
   
-  // Simplify geometries more aggressively to reduce rendering load
-  // Keep all lines but simplify coordinates if they have too many points
+  // Light simplification: only reduce extremely long lines to preserve hover accuracy
+  // Keep max 200 points per line for good balance of performance and interactivity
   const simplifiedFeatures = allFeatures.map(line => {
-    // More aggressive simplification: max 50 points per line for better performance
-    if (line.coordinates.length > 50) {
-      const step = Math.ceil(line.coordinates.length / 50);
+    if (line.coordinates.length > 200) {
+      const step = Math.ceil(line.coordinates.length / 200);
       const simplified = line.coordinates.filter((_, index) => 
         index % step === 0 || index === line.coordinates.length - 1
       );
@@ -273,8 +272,8 @@ async function fetchHifldData(
     return line;
   });
   
-  const simplifiedCount = allFeatures.filter(line => line.coordinates.length > 50).length;
-  console.log(`ℹ️ Simplified ${simplifiedCount} long lines for better performance`);
+  const simplifiedCount = allFeatures.filter(line => line.coordinates.length > 200).length;
+  console.log(`ℹ️ Simplified ${simplifiedCount} very long lines for better performance`);
   
   return simplifiedFeatures;
 }

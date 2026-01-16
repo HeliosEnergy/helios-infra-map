@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import DualRangeSlider from './DualRangeSlider';
-import StatusChip from './StatusChip';
-import StatusDropdown from './StatusDropdown';
 import './LayersFiltersTab.css';
-import './StatusComponents.css';
 import './StatusComponents.css';
 
 // Function to get country flag emoji
@@ -263,9 +260,9 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   allCountries,
   enabledCountries,
   onToggleCountryFilter,
-  allStatuses,
-  filteredStatuses,
-  onToggleStatusFilter,
+  allStatuses: _allStatuses,
+  filteredStatuses: _filteredStatuses,
+  onToggleStatusFilter: _onToggleStatusFilter,
   minPowerOutput,
   maxPowerOutput,
   onMinPowerOutputChange,
@@ -283,11 +280,11 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onOpenProximityDialog,
 }) => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<PowerRangePreset>>(new Set());
   const [showCustomRangeInputs, setShowCustomRangeInputs] = useState(false);
   const [minInputValue, setMinInputValue] = useState<string>(minPowerOutput.toString());
   const [maxInputValue, setMaxInputValue] = useState<string>(maxPowerOutput.toString());
+  const [isManuallyAdjustingPowerRange, setIsManuallyAdjustingPowerRange] = useState(false);
   
   // State for capacity factor input values
   const [minCapacityFactorInput, setMinCapacityFactorInput] = useState<string>(minCapacityFactor.toString());
@@ -332,6 +329,9 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
       return;
     }
     
+    // Reset manual adjustment flag when presets are used
+    setIsManuallyAdjustingPowerRange(false);
+    
     // Toggle the preset
     setSelectedPresets(prev => {
       const newSet = new Set(prev);
@@ -356,6 +356,11 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
       return;
     }
 
+    // Don't auto-update if user is manually adjusting in Advanced Filters
+    if (isManuallyAdjustingPowerRange) {
+      return;
+    }
+
     if (selectedPresets.size === 0) {
       // If no presets selected, show all plants (full range)
       onMinPowerOutputChange(powerRange.min);
@@ -376,7 +381,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
     
     onMinPowerOutputChange(combinedMin);
     onMaxPowerOutputChange(combinedMax);
-  }, [selectedPresets, powerRange.min, powerRange.max, showCustomRangeInputs, onMinPowerOutputChange, onMaxPowerOutputChange]);
+  }, [selectedPresets, powerRange.min, powerRange.max, showCustomRangeInputs, isManuallyAdjustingPowerRange, onMinPowerOutputChange, onMaxPowerOutputChange]);
   
   // Sync input values when power output changes externally
   useEffect(() => {
@@ -396,24 +401,6 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   useEffect(() => {
     setMaxCapacityFactorInput(maxCapacityFactor.toString());
   }, [maxCapacityFactor]);
-
-  const toggleStatusDropdown = () => {
-    setIsStatusDropdownOpen(!isStatusDropdownOpen);
-  };
-
-  const handleSelectAllStatuses = () => {
-    allStatuses.forEach(status => {
-      if (!filteredStatuses.has(status)) {
-        onToggleStatusFilter(status);
-      }
-    });
-  };
-
-  const handleClearAllStatuses = () => {
-    filteredStatuses.forEach(status => {
-      onToggleStatusFilter(status);
-    });
-  };
 
   return (
     <div className="layers-filters-tab">
@@ -504,42 +491,6 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Status Filter */}
-        <div className="control-group">
-          <label className="control-label">Status</label>
-          <div className="status-selector">
-            <div className="selected-chips">
-              {Array.from(filteredStatuses).map(status => (
-                <StatusChip
-                  key={status}
-                  status={status}
-                  onRemove={onToggleStatusFilter}
-                />
-              ))}
-              <button
-                className="dropdown-trigger"
-                onClick={toggleStatusDropdown}
-                aria-expanded={isStatusDropdownOpen}
-                aria-haspopup="listbox"
-              >
-                {filteredStatuses.size > 0
-                  ? `${filteredStatuses.size} selected`
-                  : 'Select Statuses'
-                }
-                <span className="dropdown-arrow">{isStatusDropdownOpen ? '▲' : '▼'}</span>
-              </button>
-            </div>
-            <StatusDropdown
-              allStatuses={allStatuses}
-              filteredStatuses={filteredStatuses}
-              onToggleStatus={onToggleStatusFilter}
-              onSelectAll={handleSelectAllStatuses}
-              onClearAll={handleClearAllStatuses}
-              isOpen={isStatusDropdownOpen}
-            />
           </div>
         </div>
 
@@ -771,6 +722,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                           Math.min(maxPowerOutput, Math.min(powerRange.max, numValue))
                         );
                         setMinInputValue(clampedValue.toString());
+                        setIsManuallyAdjustingPowerRange(true);
                         onMinPowerOutputChange(clampedValue);
                         // Clear selected presets when manually adjusting
                         setSelectedPresets(new Set());
@@ -812,6 +764,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                           Math.min(powerRange.max, numValue)
                         );
                         setMaxInputValue(clampedValue.toString());
+                        setIsManuallyAdjustingPowerRange(true);
                         onMaxPowerOutputChange(clampedValue);
                         // Clear selected presets when manually adjusting
                         setSelectedPresets(new Set());
@@ -834,12 +787,11 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                 max={powerRange.max}
                 value={[minPowerOutput, maxPowerOutput]}
                 onChange={([min, max]) => {
+                  setIsManuallyAdjustingPowerRange(true);
                   onMinPowerOutputChange(min);
                   onMaxPowerOutputChange(max);
-                  // Clear selected presets when manually adjusting slider
-                  setSelectedPresets(new Set());
                 }}
-                step={10}
+                step={1}
               />
             </div>
 

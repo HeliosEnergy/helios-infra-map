@@ -1,14 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface VisualizationTabProps {
   sizeMultiplier: number;
   setSizeMultiplier: (value: number) => void;
   capacityWeight: number;
   setCapacityWeight: (value: number) => void;
-  sizeByOption: 'nameplate_capacity' | 'capacity_factor' | 'generation' | 'net_summer_capacity' | 'net_winter_capacity';
-  setSizeByOption: (value: 'nameplate_capacity' | 'capacity_factor' | 'generation' | 'net_summer_capacity' | 'net_winter_capacity') => void;
-  showSummerCapacity: boolean;
-  setShowSummerCapacity: (value: boolean) => void;
+  sizeByOption: 'nameplate_capacity' | 'capacity_factor' | 'generation';
+  setSizeByOption: (value: 'nameplate_capacity' | 'capacity_factor' | 'generation') => void;
 }
 
 // Data availability status
@@ -27,9 +25,15 @@ const VisualizationTab: React.FC<VisualizationTabProps> = ({
   setCapacityWeight,
   sizeByOption,
   setSizeByOption,
-  showSummerCapacity,
-  setShowSummerCapacity,
 }) => {
+  // Safety check: if sizeByOption is invalid (e.g., from old saved state), reset to default
+  useEffect(() => {
+    const validOptions: Array<'nameplate_capacity' | 'capacity_factor' | 'generation'> = ['nameplate_capacity', 'capacity_factor', 'generation'];
+    if (!validOptions.includes(sizeByOption as any)) {
+      setSizeByOption('nameplate_capacity');
+    }
+  }, [sizeByOption, setSizeByOption]);
+
   return (
     <div className="visualization-tab">
       {/* Base Size Control */}
@@ -95,28 +99,12 @@ const VisualizationTab: React.FC<VisualizationTabProps> = ({
           <option value="generation" disabled={!DATA_AVAILABILITY.generation}>
             Generation {DATA_AVAILABILITY.generation ? '' : '(data unavailable)'}
           </option>
-          <option value="net_summer_capacity">Net Summer Capacity</option>
-          <option value="net_winter_capacity">Net Winter Capacity</option>
         </select>
         {sizeByOption !== 'nameplate_capacity' && !DATA_AVAILABILITY[sizeByOption] && (
           <p className="control-description warning">
             Selected metric data is not available. Circles sized by nameplate capacity.
           </p>
         )}
-      </div>
-
-      {/* Show Summer Capacity Toggle */}
-      <div className="control-group">
-        <label className="toggle-item">
-          <input
-            type="checkbox"
-            checked={showSummerCapacity}
-            onChange={(e) => setShowSummerCapacity(e.target.checked)}
-            className="toggle-input"
-          />
-          <span className="toggle-slider"></span>
-          <span className="toggle-label">Show Summer Capacity</span>
-        </label>
       </div>
     </div>
   );

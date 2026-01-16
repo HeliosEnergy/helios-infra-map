@@ -7,6 +7,8 @@ interface LegendTabProps {
   allSourcesInData: string[];
   filteredSources: Set<string>;
   onToggleSourceFilter: (source: string) => void;
+  onSelectAllSources?: () => void;
+  onDeselectAllSources?: () => void;
   showWfsCables: boolean;
   onToggleWfsCables: () => void;
   powerPlantCounts?: Record<string, number>;
@@ -23,6 +25,8 @@ const LegendTab: React.FC<LegendTabProps> = ({
   allSourcesInData,
   filteredSources,
   onToggleSourceFilter,
+  onSelectAllSources,
+  onDeselectAllSources,
   showWfsCables,
   onToggleWfsCables,
   powerPlantCounts = {},
@@ -208,6 +212,30 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
       {/* Legend Content */}
       <div className="legend-content">
+        {/* Select All / Deselect All Buttons */}
+        {(onSelectAllSources || onDeselectAllSources) && (
+          <div className="legend-select-all-controls">
+            {onSelectAllSources && (
+              <button
+                className="legend-select-all-btn"
+                onClick={onSelectAllSources}
+                aria-label="Select all power plant types"
+              >
+                Select All
+              </button>
+            )}
+            {onDeselectAllSources && (
+              <button
+                className="legend-deselect-all-btn"
+                onClick={onDeselectAllSources}
+                aria-label="Deselect all power plant types"
+              >
+                Deselect All
+              </button>
+            )}
+          </div>
+        )}
+
         {Object.entries(groupedSources).map(([category, sources]) => (
           <div key={category} className="legend-section">
             {groupByCategory && (() => {

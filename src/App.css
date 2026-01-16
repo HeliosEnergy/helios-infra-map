@@ -746,9 +746,9 @@ body {
 }
 
 .nvidia-badge {
-  height: 18px;
+  height: 60px;
   width: auto;
-  max-width: 120px;
+  max-width: 350px;
   object-fit: contain;
   opacity: 0.8;
   transition: opacity 0.2s;
