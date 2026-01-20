@@ -33,7 +33,7 @@
   background: transparent;
   outline: none;
   -webkit-appearance: none;
-  pointer-events: auto !important;
+  pointer-events: auto;
   cursor: pointer;
   z-index: 100; /* Very high z-index to ensure inputs are above everything */
   margin: 0;
@@ -41,11 +41,11 @@
 }
 
 .slider-max {
-  z-index: 101; /* Max handle above min handle */
+  /* z-index controlled dynamically via inline styles */
 }
 
 .slider-min {
-  z-index: 100; /* Min handle above track */
+  /* z-index controlled dynamically via inline styles */
 }
 
 .slider-input::-webkit-slider-thumb {
