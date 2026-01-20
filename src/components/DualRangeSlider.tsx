@@ -1,4 +1,4 @@
- import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './DualRangeSlider.css';
 
 interface DualRangeSliderProps {
@@ -21,65 +21,108 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
   disabled = false,
 }) => {
   const [localValue, setLocalValue] = useState<[number, number]>(value);
+  const [isDraggingMin, setIsDraggingMin] = useState<boolean>(false);
+  const [isDraggingMax, setIsDraggingMax] = useState<boolean>(false);
+  const [hoveredSlider, setHoveredSlider] = useState<'min' | 'max' | null>(null);
+  const isDraggingRef = useRef<boolean>(false);
+  const isDraggingMinRef = useRef<boolean>(false);
+  const isDraggingMaxRef = useRef<boolean>(false);
+  const lastSyncedValueRef = useRef<[number, number]>(value);
   const minInputRef = useRef<HTMLInputElement>(null);
   const maxInputRef = useRef<HTMLInputElement>(null);
-  const isDraggingRef = useRef(false);
-  const lastSyncedValueRef = useRef<[number, number]>(value);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Sync local state with props when value changes externally
-  // Only sync if we're not currently dragging to avoid interference
+  // Sync ONLY when NOT dragging - completely block while dragging
   useEffect(() => {
-    if (!isDraggingRef.current) {
-      // Only sync if the prop value actually changed (not just a re-render)
-      if (value[0] !== lastSyncedValueRef.current[0] || value[1] !== lastSyncedValueRef.current[1]) {
-        setLocalValue(value);
-        lastSyncedValueRef.current = value;
-      }
+    // If dragging, completely ignore this update
+    if (isDraggingRef.current || isDraggingMinRef.current || isDraggingMaxRef.current) {
+      return;
+    }
+    
+    // Only sync if value actually changed from what we last synced
+    if (value[0] !== lastSyncedValueRef.current[0] || value[1] !== lastSyncedValueRef.current[1]) {
+      setLocalValue(value);
+      lastSyncedValueRef.current = value;
     }
   }, [value]);
 
   const [minValue, maxValue] = localValue;
 
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // SET DRAGGING FLAGS FIRST - BEFORE ANYTHING ELSE
+    isDraggingRef.current = true;
+    isDraggingMinRef.current = true;
+    setIsDraggingMin(true);
+    setIsDraggingMax(false); // Ensure max is not dragging
+    
     const newMin = Number(e.target.value);
-    // Simply constrain min: must be >= min bound and < maxValue
+    // Use current maxValue from state - keep it EXACTLY the same
     const constrainedMin = Math.max(min, Math.min(newMin, maxValue - step));
-    // Keep maxValue unchanged
-    const newValue: [number, number] = [constrainedMin, maxValue];
+    const newValue: [number, number] = [constrainedMin, maxValue]; // maxValue stays unchanged
+    
     setLocalValue(newValue);
     lastSyncedValueRef.current = newValue;
-    // Update parent immediately for real-time feedback
     onChange(newValue);
   };
 
   const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // SET DRAGGING FLAGS FIRST - BEFORE ANYTHING ELSE
+    isDraggingRef.current = true;
+    isDraggingMaxRef.current = true;
+    setIsDraggingMax(true);
+    setIsDraggingMin(false); // Ensure min is not dragging
+    
     const newMax = Number(e.target.value);
-    // Simply constrain max: must be <= max bound and > minValue
+    // Use current minValue from state - keep it EXACTLY the same
     const constrainedMax = Math.min(max, Math.max(newMax, minValue + step));
-    // Keep minValue unchanged
-    const newValue: [number, number] = [minValue, constrainedMax];
+    const newValue: [number, number] = [minValue, constrainedMax]; // minValue stays unchanged
+    
     setLocalValue(newValue);
     lastSyncedValueRef.current = newValue;
-    // Update parent immediately for real-time feedback
     onChange(newValue);
   };
 
-  const handleMouseDown = () => {
+  const handleMinMouseDown = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation();
     isDraggingRef.current = true;
+    isDraggingMinRef.current = true;
+    isDraggingMaxRef.current = false;
+    setIsDraggingMin(true);
+    setIsDraggingMax(false);
   };
+
+  const handleMaxMouseDown = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    isDraggingMaxRef.current = true;
+    isDraggingMinRef.current = false;
+    setIsDraggingMax(true);
+    setIsDraggingMin(false);
+  };
+
+
 
   const handleMouseUp = () => {
-    if (isDraggingRef.current) {
-      // Sync the ref when dragging ends to prevent unnecessary re-syncs
-      lastSyncedValueRef.current = localValue;
-    }
-    isDraggingRef.current = false;
+    // Wait longer before allowing sync - give parent time to update
+    setTimeout(() => {
+      isDraggingRef.current = false;
+      isDraggingMinRef.current = false;
+      isDraggingMaxRef.current = false;
+      setIsDraggingMin(false);
+      setIsDraggingMax(false);
+    }, 350);
   };
 
-  // Add document-level mouse up listener to ensure isDraggingRef is reset
+  // Document-level mouse up to catch all cases
   useEffect(() => {
     const handleDocumentMouseUp = () => {
-      isDraggingRef.current = false;
+      setTimeout(() => {
+        isDraggingRef.current = false;
+        isDraggingMinRef.current = false;
+        isDraggingMaxRef.current = false;
+        setIsDraggingMin(false);
+        setIsDraggingMax(false);
+      }, 350);
     };
 
     document.addEventListener('mouseup', handleDocumentMouseUp);
@@ -91,95 +134,46 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
     };
   }, []);
 
-  // Handle dragging the middle section (range highlight) to move the whole range
-  const [isDraggingRange, setIsDraggingRange] = useState(false);
-  const [dragStartX, setDragStartX] = useState(0);
-  const [dragStartValue, setDragStartValue] = useState<[number, number]>([0, 0]);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  
-  const handleTrackMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // This handler is only called from the draggable area in the middle
-    // which already excludes the handle areas, so we can proceed
-    isDraggingRef.current = true;
-    setIsDraggingRange(true);
-    setDragStartX(e.clientX);
-    setDragStartValue([minValue, maxValue]);
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  useEffect(() => {
-    if (!isDraggingRange) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const containerRect = containerRef.current?.getBoundingClientRect();
-      if (!containerRect) return;
-
-      const deltaX = e.clientX - dragStartX;
-      const deltaPercent = (deltaX / containerRect.width) * 100;
-      const deltaValue = (deltaPercent / 100) * (max - min);
-
-      const newMin = dragStartValue[0] + deltaValue;
-      const newMax = dragStartValue[1] + deltaValue;
-
-      // Constrain to bounds independently
-      const constrainedMin = Math.max(min, Math.min(newMin, max - step));
-      const constrainedMax = Math.min(max, Math.max(newMax, min + step));
-      
-      // Ensure min doesn't exceed max and vice versa
-      const finalMin = Math.min(constrainedMin, constrainedMax - step);
-      const finalMax = Math.max(constrainedMax, finalMin + step);
-      
-      const newValue: [number, number] = [finalMin, finalMax];
-      setLocalValue(newValue);
-      lastSyncedValueRef.current = newValue;
-      // Update parent in real-time while dragging
-      onChange(newValue);
-    };
-
-    const handleMouseUp = () => {
-      if (isDraggingRange) {
-        isDraggingRef.current = false;
-        setIsDraggingRange(false);
-      }
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDraggingRange, dragStartX, dragStartValue, min, max, step, onChange]);
-
-  // Calculate percentage positions for the track highlight
   const minPercent = ((minValue - min) / (max - min)) * 100;
   const maxPercent = ((maxValue - min) / (max - min)) * 100;
 
+  const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current || isDraggingRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mousePercent = (mouseX / rect.width) * 100;
+    
+    // Determine which thumb is closer to mouse position
+    const distanceToMin = Math.abs(mousePercent - minPercent);
+    const distanceToMax = Math.abs(mousePercent - maxPercent);
+    
+    // Raise the slider whose thumb is closer (within 20% of track width)
+    if (distanceToMin < distanceToMax && distanceToMin < 20) {
+      setHoveredSlider('min');
+    } else if (distanceToMax < 20) {
+      setHoveredSlider('max');
+    } else {
+      // Mouse is in the middle, don't change
+      setHoveredSlider(null);
+    }
+  };
+
+  const handleContainerMouseLeave = () => {
+    if (!isDraggingRef.current) {
+      setHoveredSlider(null);
+    }
+  };
+
   return (
     <div className={`dual-range-slider ${className} ${disabled ? 'disabled' : ''}`}>
-      <div ref={containerRef} className="slider-container">
-        {/* Min input */}
-        <input
-          ref={minInputRef}
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={minValue}
-          onChange={handleMinChange}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onTouchEnd={handleMouseUp}
-          className="slider-input slider-min"
-          disabled={disabled}
-          aria-label="Minimum value"
-          style={{ zIndex: 1000 }}
-        />
-
-        {/* Max input */}
+      <div 
+        ref={containerRef}
+        className="slider-container"
+        onMouseMove={handleContainerMouseMove}
+        onMouseLeave={handleContainerMouseLeave}
+      >
+        {/* Maximum pointer - independent control (rendered first) */}
         <input
           ref={maxInputRef}
           type="range"
@@ -188,16 +182,42 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
           step={step}
           value={maxValue}
           onChange={handleMaxChange}
-          onMouseDown={handleMouseDown}
+          onMouseDown={handleMaxMouseDown}
           onMouseUp={handleMouseUp}
+          onTouchStart={(e) => handleMaxMouseDown(e as any)}
           onTouchEnd={handleMouseUp}
           className="slider-input slider-max"
           disabled={disabled}
           aria-label="Maximum value"
-          style={{ zIndex: 1001 }}
+          style={{ 
+            zIndex: isDraggingMax ? 1003 : (isDraggingMin ? 1000 : (hoveredSlider === 'max' ? 1002 : 1001)),
+            pointerEvents: isDraggingMin ? 'none' : 'auto'
+          }}
         />
 
-        {/* Track highlight */}
+        {/* Minimum pointer - independent control */}
+        <input
+          ref={minInputRef}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={minValue}
+          onChange={handleMinChange}
+          onMouseDown={handleMinMouseDown}
+          onMouseUp={handleMouseUp}
+          onTouchStart={(e) => handleMinMouseDown(e as any)}
+          onTouchEnd={handleMouseUp}
+          className="slider-input slider-min"
+          disabled={disabled}
+          aria-label="Minimum value"
+          style={{ 
+            zIndex: isDraggingMin ? 1003 : (isDraggingMax ? 1000 : (hoveredSlider === 'min' ? 1002 : 1001)),
+            pointerEvents: isDraggingMax ? 'none' : 'auto'
+          }}
+        />
+
+        {/* Track highlight showing selected range */}
         <div className="slider-track">
           <div 
             className="slider-track-highlight"
@@ -206,30 +226,14 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
               width: `${maxPercent - minPercent}%`,
             }}
           />
-          {/* Draggable area in the middle portion only - only show if range is large enough */}
-          {(maxPercent - minPercent) > 10 && (
-            <div 
-              className="slider-track-draggable"
-              style={{
-                left: `${minPercent + (maxPercent - minPercent) * 0.35}%`,
-                width: `${(maxPercent - minPercent) * 0.3}%`,
-                cursor: isDraggingRange ? 'grabbing' : 'grab',
-              }}
-              onMouseDown={handleTrackMouseDown}
-            />
-          )}
         </div>
       </div>
 
       {/* Value display */}
       <div className="slider-values">
-        <span className="slider-value">
-          {minValue.toLocaleString()}
-        </span>
+        <span className="slider-value">{minValue.toLocaleString()}</span>
         <span className="slider-separator">–</span>
-        <span className="slider-value">
-          {maxValue.toLocaleString()}
-        </span>
+        <span className="slider-value">{maxValue.toLocaleString()}</span>
       </div>
     </div>
   );
