@@ -22,6 +22,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import SidePanel from './components/SidePanel';
 import ProximityDialog from './components/ProximityDialog';
+import AddressSearch from './components/AddressSearch';
 import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
 
 // SizeByOption type as per MAP_FEATURES_DOCUMENTATION.md
@@ -317,6 +318,15 @@ function App() {
 
   // State for plant search and selection
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
+  
+  // State for map view state (for address search)
+  const [viewState, setViewState] = useState({
+    longitude: -95,
+    latitude: 40,
+    zoom: 3,
+    pitch: 0,
+    bearing: 0
+  });
 
   // Toggle source filter
   const toggleSourceFilter = (source: string) => {
@@ -403,6 +413,18 @@ function App() {
     const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
   };
+
+  // Handler for address search - zooms map to selected location
+  const handleLocationSelect = useCallback((coordinates: [number, number], zoom: number) => {
+    const [lng, lat] = coordinates;
+    setViewState({
+      longitude: lng,
+      latitude: lat,
+      zoom: zoom,
+      pitch: 0,
+      bearing: 0
+    });
+  }, []);
 
   // Pre-load HIFLD data in background on app start (for instant loading later)
   useEffect(() => {
@@ -969,13 +991,22 @@ function App() {
       )}
 
       <div className="map-container">
+        <AddressSearch 
+          onLocationSelect={handleLocationSelect}
+          mapboxToken={MAPBOX_TOKEN}
+        />
         <DeckGL
-          initialViewState={{
-            longitude: -95,
-            latitude: 40,
-            zoom: 3,
-            pitch: 0,
-            bearing: 0
+          viewState={viewState}
+          onViewStateChange={({ viewState: newViewState }) => {
+            if (newViewState && 'longitude' in newViewState && 'latitude' in newViewState) {
+              setViewState({
+                longitude: newViewState.longitude,
+                latitude: newViewState.latitude,
+                zoom: newViewState.zoom,
+                pitch: (newViewState as any).pitch || 0,
+                bearing: (newViewState as any).bearing || 0
+              });
+            }
           }}
           controller={true}
           layers={layers}
