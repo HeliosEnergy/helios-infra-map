@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Map, { NavigationControl } from 'react-map-gl';
 import DeckGL from '@deck.gl/react';
-import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
+import { ScatterplotLayer, PathLayer, PolygonLayer, IconLayer } from '@deck.gl/layers';
 import './App.css';
 import type { PowerPlant } from './models/PowerPlant';
 import type { Cable } from './models/Cable';
@@ -11,7 +11,8 @@ import { loadWfsCableData } from './utils/wfsDataLoader';
 import { loadHifldData } from './utils/hifldDataLoader';
 import { HifldCache } from './utils/cache';
 import { loadAndProcessAllPowerPlants } from './utils/unifiedPowerPlantProcessor';
-import { isPointNearLine } from './utils/geoUtils';
+import { isPointNearLine, generateCirclePolygon } from './utils/geoUtils';
+import { LOCATION_PIN_ICON } from './utils/locationPinIcon';
 import type { LineSegment } from './utils/spatialIndex';
 import { createLineIndex, queryLineIndex } from './utils/spatialIndex';
 import { calculatePowerRange, type PowerRange } from './utils/powerRangeCalculator';
@@ -23,6 +24,7 @@ import Footer from './components/Footer';
 import SidePanel from './components/SidePanel';
 import ProximityDialog from './components/ProximityDialog';
 import AddressSearch from './components/AddressSearch';
+import LocationStatsPanel from './components/LocationStatsPanel';
 import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
 
 // SizeByOption type as per MAP_FEATURES_DOCUMENTATION.md
@@ -261,6 +263,7 @@ function App() {
   const [showHifldSuccessMessage, setShowHifldSuccessMessage] = useState<boolean>(false);
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
   const [hoveredLine, setHoveredLine] = useState<TransmissionLine | null>(null);
+  const [locationPinHoverInfo, setLocationPinHoverInfo] = useState<{ x: number; y: number; address: string } | null>(null);
   // State for persistent tooltip for transmission lines
   const [isLineTooltipPersistent, setIsLineTooltipPersistent] = useState<boolean>(false);
   const [persistentLine, setPersistentLine] = useState<TransmissionLine | null>(null);
@@ -327,6 +330,15 @@ function App() {
     pitch: 0,
     bearing: 0
   });
+  
+  // State for selected location (for stats panel)
+  const [selectedLocation, setSelectedLocation] = useState<{
+    coordinates: [number, number];
+    addressName: string;
+  } | null>(null);
+  const [locationRadius, setLocationRadius] = useState<number>(5); // Default 5 miles
+  const [isStatsPanelCollapsed, setIsStatsPanelCollapsed] = useState<boolean>(false);
+  const [showRadiusCircle, setShowRadiusCircle] = useState<boolean>(false); // Hide circle by default
 
   // Toggle source filter
   const toggleSourceFilter = (source: string) => {
@@ -415,7 +427,7 @@ function App() {
   };
 
   // Handler for address search - zooms map to selected location
-  const handleLocationSelect = useCallback((coordinates: [number, number], zoom: number) => {
+  const handleLocationSelect = useCallback((coordinates: [number, number], zoom: number, addressName: string) => {
     const [lng, lat] = coordinates;
     setViewState({
       longitude: lng,
@@ -423,6 +435,10 @@ function App() {
       zoom: zoom,
       pitch: 0,
       bearing: 0
+    });
+    setSelectedLocation({
+      coordinates: [lng, lat],
+      addressName
     });
   }, []);
 
@@ -794,8 +810,123 @@ function App() {
     return counts;
   }, [powerPlants, wfsCables]);
 
+  // Generate circle polygon for selected location
+  const locationCircle = useMemo(() => {
+    if (!selectedLocation) return null;
+    return generateCirclePolygon(selectedLocation.coordinates, locationRadius, 64);
+  }, [selectedLocation, locationRadius]);
+
+  // Auto-zoom to fit circle when radius changes - ensures full circle is always visible
+  // Updates immediately to show full circle perimeter as radius changes
+  useEffect(() => {
+    if (!selectedLocation || !locationCircle) return;
+    
+    // Calculate bounding box of the circle
+    const lons = locationCircle.map(p => p[0]);
+    const lats = locationCircle.map(p => p[1]);
+    const minLon = Math.min(...lons);
+    const maxLon = Math.max(...lons);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    
+    // Calculate center (use selected location center)
+    const [centerLon, centerLat] = selectedLocation.coordinates;
+    
+    // Calculate the span of the circle in degrees
+    const latSpan = maxLat - minLat;
+    const lonSpan = maxLon - minLon;
+    
+    // Get viewport dimensions
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const viewportSize = Math.min(viewportWidth, viewportHeight);
+    
+    // Calculate zoom based on span
+    // At zoom 0: 360 degrees = 256 pixels
+    // At zoom z: 360 degrees = 256 * 2^z pixels
+    // We want the circle to fit in the viewport with padding
+    
+    const latRad = centerLat * Math.PI / 180;
+    // Adjust for latitude - longitude degrees are smaller at higher latitudes
+    const lonSpanAdjusted = lonSpan / Math.cos(latRad);
+    const adjustedSpan = Math.max(latSpan, lonSpanAdjusted);
+    
+    // Calculate zoom with 60% padding to ensure full visibility including top and bottom
+    const paddedSpan = adjustedSpan * 1.6;
+    let zoom = Math.log2((viewportSize * 360) / (paddedSpan * 256));
+    
+    // Clamp zoom between reasonable bounds
+    zoom = Math.max(2, Math.min(18, Math.round(zoom * 10) / 10));
+    
+    setViewState(prev => ({
+      ...prev,
+      longitude: centerLon,
+      latitude: centerLat,
+      zoom: zoom
+    }));
+  }, [selectedLocation, locationRadius, locationCircle]);
+
   const layers = useMemo(() => {
     const layerList = [
+      // Location radius circle (render first so it's behind other layers)
+      selectedLocation && locationCircle && showRadiusCircle && new PolygonLayer({
+        id: 'location-radius-circle',
+        data: [{
+          polygon: locationCircle,
+          center: selectedLocation.coordinates
+        }],
+        pickable: false,
+        stroked: true,
+        filled: true,
+        wireframe: false,
+        lineWidthMinPixels: 2,
+        getPolygon: (d: { polygon: [number, number][] }) => d.polygon,
+        getFillColor: [59, 130, 246, 30], // Blue with 30/255 opacity (transparent)
+        getLineColor: [59, 130, 246, 150], // Blue with more opacity for border
+        getLineWidth: 2,
+        updateTriggers: {
+          getPolygon: [locationCircle],
+        },
+      }),
+      // Location pin marker (always visible when location is selected)
+      // Rendered after circle but before other layers so it's visible on top
+      selectedLocation && new IconLayer({
+        id: 'location-pin',
+        data: [{
+          coordinates: selectedLocation.coordinates,
+          addressName: selectedLocation.addressName
+        }],
+        pickable: true,
+        iconAtlas: LOCATION_PIN_ICON.url,
+        iconMapping: {
+          marker: {
+            x: 0,
+            y: 0,
+            width: LOCATION_PIN_ICON.width,
+            height: LOCATION_PIN_ICON.height,
+            anchorY: LOCATION_PIN_ICON.anchorY,
+            mask: false
+          }
+        },
+        getIcon: () => 'marker',
+        getPosition: (d: { coordinates: [number, number] }) => d.coordinates,
+        getSize: 32,
+        getColor: [255, 255, 255, 255],
+        sizeScale: 1,
+        sizeMinPixels: 20,
+        sizeMaxPixels: 40,
+        onHover: (info: { object?: { addressName: string }; x?: number; y?: number }) => {
+          if (info.object && info.x !== undefined && info.y !== undefined) {
+            setLocationPinHoverInfo({
+              x: info.x,
+              y: info.y,
+              address: info.object.addressName
+            });
+          } else {
+            setLocationPinHoverInfo(null);
+          }
+        },
+      }),
       showPowerPlants && new ScatterplotLayer({
       id: 'power-plants',
       data: filteredPowerPlants,
@@ -928,7 +1059,7 @@ function App() {
     
     const filteredLayers = layerList.filter(Boolean);
     return filteredLayers;
-  }, [filteredPowerPlants, showPowerPlants, showWfsCables, wfsCables, showHifldLines, hifldLines, sizeMultiplier, capacityWeight, sizeByOption, setHoverInfo, powerRange, isLineTooltipPersistent]);
+  }, [filteredPowerPlants, showPowerPlants, showWfsCables, wfsCables, showHifldLines, hifldLines, sizeMultiplier, capacityWeight, sizeByOption, setHoverInfo, powerRange, isLineTooltipPersistent, selectedLocation, locationCircle, showRadiusCircle]);
 
   return (
     <div className="app-container">
@@ -995,6 +1126,32 @@ function App() {
           onLocationSelect={handleLocationSelect}
           mapboxToken={MAPBOX_TOKEN}
         />
+        {selectedLocation && (
+          <LocationStatsPanel
+            coordinates={selectedLocation.coordinates}
+            addressName={selectedLocation.addressName}
+            powerPlants={powerPlants}
+            radius={locationRadius}
+            onRadiusChange={setLocationRadius}
+            isCollapsed={isStatsPanelCollapsed}
+            onToggleCollapse={() => setIsStatsPanelCollapsed(!isStatsPanelCollapsed)}
+            onClose={() => {
+              setSelectedLocation(null);
+              setIsStatsPanelCollapsed(false);
+              setShowRadiusCircle(false); // Reset to hide circle when reopening
+              // Reset map to original view (USA-focused)
+              setViewState({
+                longitude: -95,
+                latitude: 40,
+                zoom: 3,
+                pitch: 0,
+                bearing: 0
+              });
+            }}
+            showRadiusCircle={showRadiusCircle}
+            onToggleRadiusCircle={() => setShowRadiusCircle(!showRadiusCircle)}
+          />
+        )}
         <DeckGL
           viewState={viewState}
           onViewStateChange={({ viewState: newViewState }) => {
@@ -1048,6 +1205,24 @@ function App() {
             <NavigationControl position="top-right" />
           </Map>
         </DeckGL>
+        
+        {/* Location Pin Hover Tooltip */}
+        {locationPinHoverInfo && (
+          <div
+            className="location-pin-tooltip"
+            style={{
+              position: 'absolute',
+              left: `${locationPinHoverInfo.x}px`,
+              top: `${locationPinHoverInfo.y}px`,
+              pointerEvents: 'none',
+              zIndex: 10000,
+            }}
+          >
+            <div className="location-pin-tooltip-content">
+              {locationPinHoverInfo.address}
+            </div>
+          </div>
+        )}
       </div>
       <Footer />
 
