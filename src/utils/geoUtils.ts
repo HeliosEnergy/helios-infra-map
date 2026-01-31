@@ -92,3 +92,58 @@ function distanceToLineSegment(point: [number, number], lineStart: [number, numb
 
   return calculateDistance(point, [xx, yy]);
 }
+
+/**
+ * Generate a circle polygon from a center point and radius
+ * @param center Center coordinate [longitude, latitude]
+ * @param radiusMiles Radius in miles
+ * @param numPoints Number of points to use for the circle (default: 64)
+ * @returns Array of coordinates forming a circle polygon
+ */
+export function generateCirclePolygon(
+  center: [number, number],
+  radiusMiles: number,
+  numPoints: number = 64
+): [number, number][] {
+  const [lon, lat] = center;
+  const points: [number, number][] = [];
+  
+  // Earth radius in miles
+  const R = 3958.8;
+  
+  // Convert center to radians
+  const latRad = toRadians(lat);
+  const lonRad = toRadians(lon);
+  
+  // Angular distance in radians
+  const angularDistance = radiusMiles / R;
+  
+  for (let i = 0; i < numPoints; i++) {
+    const angle = (2 * Math.PI * i) / numPoints;
+    
+    // Calculate bearing (direction from center)
+    const bearing = angle;
+    
+    // Calculate destination point using spherical trigonometry
+    const destLatRad = Math.asin(
+      Math.sin(latRad) * Math.cos(angularDistance) +
+      Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearing)
+    );
+    
+    const destLonRad = lonRad + Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRad),
+      Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(destLatRad)
+    );
+    
+    // Convert back to degrees
+    const destLat = destLatRad * (180 / Math.PI);
+    const destLon = destLonRad * (180 / Math.PI);
+    
+    points.push([destLon, destLat]);
+  }
+  
+  // Close the polygon by adding the first point at the end
+  points.push(points[0]);
+  
+  return points;
+}

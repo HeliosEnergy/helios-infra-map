@@ -3,7 +3,7 @@ import { Search, X, MapPin } from 'lucide-react';
 import './AddressSearch.css';
 
 interface AddressSearchProps {
-  onLocationSelect: (coordinates: [number, number], zoom: number) => void;
+  onLocationSelect: (coordinates: [number, number], zoom: number, addressName: string) => void;
   mapboxToken: string;
 }
 
@@ -94,7 +94,7 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ onLocationSelect, mapboxT
       else zoom = 14;
     }
 
-    onLocationSelect([lng, lat], zoom);
+    onLocationSelect([lng, lat], zoom, result.place_name);
     setSearchQuery(result.place_name);
     setIsOpen(false);
   };
