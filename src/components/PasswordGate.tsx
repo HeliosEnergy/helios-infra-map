@@ -8,9 +8,24 @@ type PasswordGateProps = {
 
 const STORAGE_KEY = 'helios-map-authenticated';
 
+/** Set to true to disable the password gate (e.g. when Vercel env cannot be updated). Flip back to false to re-enable. */
+const PASSWORD_GATE_DISABLED = true;
+
+/** Parse VITE_APP_PASSWORD: single value or comma-separated list (trimmed). */
+const parseAllowedPasswords = (raw: string | undefined): string[] => {
+  if (!raw || typeof raw !== 'string') return [];
+  return raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+};
+
 const PasswordGate = ({ children }: PasswordGateProps) => {
-  const password = useMemo(() => (import.meta.env.VITE_APP_PASSWORD || '').trim(), []);
-  const isGateEnabled = password.length > 0;
+  const allowedPasswords = useMemo(
+    () => parseAllowedPasswords(import.meta.env.VITE_APP_PASSWORD),
+    []
+  );
+  const isGateEnabled = !PASSWORD_GATE_DISABLED && allowedPasswords.length > 0;
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(() => {
@@ -39,7 +54,8 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       return;
     }
 
-    if (input.trim() === password) {
+    const trimmed = input.trim();
+    if (allowedPasswords.some((p) => trimmed === p)) {
       window.localStorage.setItem(STORAGE_KEY, 'true');
       setIsUnlocked(true);
       setInput('');
