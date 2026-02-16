@@ -184,9 +184,11 @@ interface LayersFiltersTabProps {
   showPowerPlants: boolean;
   showWfsCables: boolean;
   showHifldLines: boolean;
+  showFiberCables: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
+  onToggleFiberCables: () => void;
 
   // Country filtering
   showCanadianPlants: boolean;
@@ -245,6 +247,8 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onTogglePowerPlants,
   onToggleWfsCables,
   onToggleHifldLines,
+  showFiberCables,
+  onToggleFiberCables,
   showCanadianPlants: _showCanadianPlants,
   showAmericanPlants: _showAmericanPlants,
   showKazakhstanPlants: _showKazakhstanPlants,
@@ -422,12 +426,12 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
           <label className="toggle-item">
             <input
               type="checkbox"
-              checked={showWfsCables}
-              onChange={onToggleWfsCables}
+              checked={showFiberCables}
+              onChange={onToggleFiberCables}
               className="toggle-input"
             />
             <span className="toggle-slider"></span>
-            <span className="toggle-label">Infrastructure</span>
+            <span className="toggle-label">Fiber Cables</span>
           </label>
 
           <label className="toggle-item">
@@ -438,7 +442,18 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
               className="toggle-input"
             />
             <span className="toggle-slider"></span>
-            <span className="toggle-label">Detailed US Infrastructure</span>
+            <span className="toggle-label">Transmission Lines</span>
+          </label>
+
+          <label className="toggle-item">
+            <input
+              type="checkbox"
+              checked={showWfsCables}
+              onChange={onToggleWfsCables}
+              className="toggle-input"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-label">Infrastructure</span>
           </label>
         </div>
       </section>

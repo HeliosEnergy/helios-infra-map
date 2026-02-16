@@ -11,11 +11,12 @@ import { loadWfsCableData } from './utils/wfsDataLoader';
 import { loadHifldData } from './utils/hifldDataLoader';
 import { HifldCache } from './utils/cache';
 import { loadAndProcessAllPowerPlants } from './utils/unifiedPowerPlantProcessor';
-import { isPointNearLine, generateCirclePolygon } from './utils/geoUtils';
+import { isPointNearLine, generateCirclePolygon, calculateDistance } from './utils/geoUtils';
 import { LOCATION_PIN_ICON } from './utils/locationPinIcon';
 import type { LineSegment } from './utils/spatialIndex';
 import { createLineIndex, queryLineIndex } from './utils/spatialIndex';
 import { calculatePowerRange, type PowerRange } from './utils/powerRangeCalculator';
+import { calculateBbox } from './utils/bboxUtils';
 import RBush from 'rbush';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useTheme } from './hooks/useTheme';
@@ -29,6 +30,12 @@ import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
 
 // SizeByOption type as per MAP_FEATURES_DOCUMENTATION.md
 type SizeByOption = 'nameplate_capacity' | 'capacity_factor' | 'generation';
+
+type FiberCable = {
+  id: string;
+  path: [number, number][];
+  properties: Record<string, unknown>;
+};
 
 // Custom hook for debouncing values
 function useDebounce<T>(value: T, delay: number): T {
@@ -252,10 +259,13 @@ function App() {
   const [powerPlants, setPowerPlants] = useState<PowerPlant[]>([]);
   const [wfsCables, setWfsCables] = useState<Cable[]>([]);
   const [hifldLines, setHifldLines] = useState<TransmissionLine[]>([]);
+  const [fiberCables, setFiberCables] = useState<FiberCable[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showPowerPlants, setShowPowerPlants] = useState<boolean>(true);
   const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
+  const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
+  const [loadingFiberCables, setLoadingFiberCables] = useState<boolean>(false);
   const [loadingHifld, setLoadingHifld] = useState<boolean>(false);
   const [hifldLoadingMessage, setHifldLoadingMessage] = useState<string>('Loading HIFLD transmission lines...');
   const [hifldProgress, setHifldProgress] = useState<number>(0);
@@ -267,8 +277,16 @@ function App() {
   // State for persistent tooltip for transmission lines
   const [isLineTooltipPersistent, setIsLineTooltipPersistent] = useState<boolean>(false);
   const [persistentLine, setPersistentLine] = useState<TransmissionLine | null>(null);
+  // State for fiber cable hover and persistent tooltip
+  const [hoveredFiberCable, setHoveredFiberCable] = useState<FiberCable | null>(null);
+  const [isFiberTooltipPersistent, setIsFiberTooltipPersistent] = useState<boolean>(false);
+  const [persistentFiberCable, setPersistentFiberCable] = useState<FiberCable | null>(null);
+  // State for nearby fiber cables for selected power plant (with distance)
+  const [nearbyFiberCables, setNearbyFiberCables] = useState<Array<FiberCable & { distance: number }>>([]);
+  const [isCalculatingNearbyFiber, setIsCalculatingNearbyFiber] = useState<boolean>(false);
   // Ref for hover timeout to delay tooltip hiding
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fiberHoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // State for filtering power plants by source
   const [filteredSources, setFilteredSources] = useState<Set<string>>(new Set());
   // State for power output range filtering (0 MW to 10000 MW)
@@ -729,8 +747,75 @@ function App() {
         clearTimeout(hoverTimeoutRef.current);
         hoverTimeoutRef.current = null;
       }
+      if (fiberHoverTimeoutRef.current) {
+        clearTimeout(fiberHoverTimeoutRef.current);
+        fiberHoverTimeoutRef.current = null;
+      }
     };
-  }, [isLineTooltipPersistent]);
+  }, [isLineTooltipPersistent, isFiberTooltipPersistent]);
+
+  // Calculate nearby fiber cables when a power plant is selected (5 mile radius) with distances
+  useEffect(() => {
+    const plant = persistentPlant;
+    if (!plant || !showFiberCables || fiberCables.length === 0) {
+      setNearbyFiberCables([]);
+      setIsCalculatingNearbyFiber(false);
+      return;
+    }
+
+    setIsCalculatingNearbyFiber(true);
+    // Use setTimeout to avoid blocking UI
+    const timeoutId = setTimeout(() => {
+      const FIBER_RADIUS_MILES = 5;
+      const nearby: Array<FiberCable & { distance: number }> = [];
+      
+      // Helper to calculate distance from point to line segment
+      const distanceToSegment = (point: [number, number], segStart: [number, number], segEnd: [number, number]): number => {
+        const [x, y] = point;
+        const [x1, y1] = segStart;
+        const [x2, y2] = segEnd;
+        const A = x - x1;
+        const B = y - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = lenSq !== 0 ? dot / lenSq : -1;
+        param = Math.max(0, Math.min(1, param));
+        const xx = x1 + param * C;
+        const yy = y1 + param * D;
+        return calculateDistance(point, [xx, yy]);
+      };
+      
+      // Check all loaded fiber cables and calculate distance
+      for (const cable of fiberCables) {
+        if (cable.path && cable.path.length > 0) {
+          if (isPointNearLine(plant.coordinates, cable.path, FIBER_RADIUS_MILES)) {
+            // Calculate minimum distance from plant to cable line segments
+            let minDistance = Infinity;
+            for (let i = 0; i < cable.path.length - 1; i++) {
+              const segDistance = distanceToSegment(plant.coordinates, cable.path[i], cable.path[i + 1]);
+              minDistance = Math.min(minDistance, segDistance);
+            }
+            // Also check distance to endpoints
+            for (const point of cable.path) {
+              const pointDistance = calculateDistance(plant.coordinates, point);
+              minDistance = Math.min(minDistance, pointDistance);
+            }
+            nearby.push({ ...cable, distance: minDistance });
+          }
+        }
+      }
+      
+      // Sort by distance (closest first)
+      nearby.sort((a, b) => a.distance - b.distance);
+      
+      setNearbyFiberCables(nearby);
+      setIsCalculatingNearbyFiber(false);
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [persistentPlant, fiberCables, showFiberCables]);
 
   // Get all unique sources from the data for the legend
   const allSourcesInData = Array.from(new Set(powerPlants.map(plant => plant.source))).sort();
@@ -799,6 +884,82 @@ function App() {
     });
   }, [powerPlants, showOnlyNearbyPlants, lineIndex, debouncedDistance, filteredSources, showCanadianPlants, showAmericanPlants, showKazakhstanPlants, showUaePlants, showIndiaPlants, showKyrgyzstanPlants, minPowerOutput, maxPowerOutput, minCapacityFactor, maxCapacityFactor, enabledCountries]);
 
+  // Helper: parse GeoJSON features into FiberCable[]
+  const parseFiberFeatures = useCallback((features: any[], idPrefix: string): FiberCable[] => {
+    const cables: FiberCable[] = [];
+    features.forEach((feature: any, featureIndex: number) => {
+      const geometry = feature?.geometry;
+      const properties = feature?.properties ?? {};
+      if (!geometry || !geometry.type || !geometry.coordinates) return;
+      if (geometry.type === 'LineString') {
+        cables.push({
+          id: (properties.id as string) ?? `${idPrefix}-${featureIndex}`,
+          path: geometry.coordinates as [number, number][],
+          properties,
+        });
+      } else if (geometry.type === 'MultiLineString') {
+        (geometry.coordinates as [number, number][][]).forEach((segment, segmentIndex) => {
+          cables.push({
+            id: (properties.id as string) ? `${properties.id}-${segmentIndex}` : `${idPrefix}-${featureIndex}-${segmentIndex}`,
+            path: segment,
+            properties,
+          });
+        });
+      }
+    });
+    return cables;
+  }, []);
+
+  // Load detailed fiber cables when zoomed in (viewport-based)
+  useEffect(() => {
+    if (!showFiberCables) {
+      setFiberCables([]);
+      return;
+    }
+    if (viewState.zoom < 4) {
+      setFiberCables([]);
+      return;
+    }
+
+    const [minLon, minLat, maxLon, maxLat] = calculateBbox(
+      viewState.longitude,
+      viewState.latitude,
+      viewState.zoom
+    );
+
+    let cancelled = false;
+    setLoadingFiberCables(true);
+
+    const loadFiberCables = async () => {
+      try {
+        const params = new URLSearchParams({
+          minLon: minLon.toString(),
+          minLat: minLat.toString(),
+          maxLon: maxLon.toString(),
+          maxLat: maxLat.toString(),
+        });
+        const response = await fetch(`/api/fiber-bbox?${params.toString()}`);
+        if (!response.ok || cancelled) throw new Error(`Failed to load fiber cable data: ${response.statusText}`);
+        const geojson = await response.json();
+        const features = Array.isArray(geojson.features) ? geojson.features : [];
+        const cables = parseFiberFeatures(features, 'fiber');
+        // Cap client-side to prevent memory crash (max 25k cables)
+        const MAX_CABLES = 25000;
+        if (!cancelled) setFiberCables(cables.length > MAX_CABLES ? cables.slice(0, MAX_CABLES) : cables);
+      } catch (error) {
+        if (!cancelled) console.error('Error loading fiber cables:', error);
+      } finally {
+        if (!cancelled) setLoadingFiberCables(false);
+      }
+    };
+
+    const timeoutId = setTimeout(loadFiberCables, 300);
+    return () => {
+      clearTimeout(timeoutId);
+      cancelled = true;
+    };
+  }, [showFiberCables, viewState.longitude, viewState.latitude, viewState.zoom, parseFiberFeatures]);
+
   // Count power plants by source
   const powerPlantCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -855,8 +1016,8 @@ function App() {
     const paddedSpan = adjustedSpan * 1.6;
     let zoom = Math.log2((viewportSize * 360) / (paddedSpan * 256));
     
-    // Clamp zoom between reasonable bounds
-    zoom = Math.max(2, Math.min(18, Math.round(zoom * 10) / 10));
+    // Clamp zoom: minimum 10 so map automatically lands at a good "city" level and fiber always loads
+    zoom = Math.max(10, Math.min(18, Math.round(zoom * 10) / 10));
     
     setViewState(prev => ({
       ...prev,
@@ -973,7 +1134,7 @@ function App() {
         POWER_PLANT_COLORS[d.source] || POWER_PLANT_COLORS.other,
        onHover: (info: { object?: PowerPlant }) => setHoverInfo(info.object || null),
     }),
-    showWfsCables && new PathLayer({
+      showWfsCables && new PathLayer({
       id: 'wfs-cables',
       data: wfsCables,
       pickable: true,
@@ -982,6 +1143,37 @@ function App() {
       getColor: CABLE_COLOR, // Orange color
       getWidth: 2, // Thinner cables
       onHover: () => {}
+    }),
+    // Fiber cables layer when zoomed in (viewport-based)
+    showFiberCables && viewState.zoom >= 4 && fiberCables.length > 0 && new PathLayer({
+      id: 'fiber-cables',
+      data: fiberCables,
+      pickable: true,
+      widthMinPixels: 1,
+      getPath: (d: FiberCable) => d.path,
+      getColor: [200, 0, 200], // Magenta for fiber
+      getWidth: 2,
+      getPickingRadius: 45,
+      autoHighlight: false,
+      highlightColor: [255, 200, 0, 255],
+      onHover: (info: { object?: FiberCable }) => {
+        if (fiberHoverTimeoutRef.current) {
+          clearTimeout(fiberHoverTimeoutRef.current);
+          fiberHoverTimeoutRef.current = null;
+        }
+        if (info.object) {
+          // Show hover tooltip, but don't clear persistent if it's set
+          setHoveredFiberCable(info.object);
+        } else {
+          // Only hide hover tooltip if not persistent (persistent stays visible)
+          if (!isFiberTooltipPersistent) {
+            fiberHoverTimeoutRef.current = setTimeout(() => {
+              setHoveredFiberCable(null);
+              fiberHoverTimeoutRef.current = null;
+            }, 2500);
+          }
+        }
+      },
     }),
     showHifldLines && hifldLines.length > 0 && new PathLayer({
       id: 'hifld-lines',
@@ -1059,7 +1251,27 @@ function App() {
     
     const filteredLayers = layerList.filter(Boolean);
     return filteredLayers;
-  }, [filteredPowerPlants, showPowerPlants, showWfsCables, wfsCables, showHifldLines, hifldLines, sizeMultiplier, capacityWeight, sizeByOption, setHoverInfo, powerRange, isLineTooltipPersistent, selectedLocation, locationCircle, showRadiusCircle]);
+  }, [
+    filteredPowerPlants,
+    showPowerPlants,
+    showWfsCables,
+    wfsCables,
+    showHifldLines,
+    hifldLines,
+    showFiberCables,
+    fiberCables,
+    isFiberTooltipPersistent,
+    viewState.zoom,
+    sizeMultiplier,
+    capacityWeight,
+    sizeByOption,
+    setHoverInfo,
+    powerRange,
+    isLineTooltipPersistent,
+    selectedLocation,
+    locationCircle,
+    showRadiusCircle,
+  ]);
 
   return (
     <div className="app-container">
@@ -1118,6 +1330,13 @@ function App() {
       {showHifldSuccessMessage && (
         <div className="data-warning" style={{ backgroundColor: 'rgba(0, 150, 0, 0.1)', borderColor: 'rgba(0, 150, 0, 0.3)' }}>
           <span>✅ {hifldLines.length.toLocaleString()} transmission lines loaded and displayed.</span>
+        </div>
+      )}
+      
+      {/* Fiber Cables Loading Indicator */}
+      {showFiberCables && loadingFiberCables && (
+        <div className="data-warning" style={{ backgroundColor: 'rgba(200, 0, 200, 0.1)', borderColor: 'rgba(200, 0, 200, 0.3)' }}>
+          <span>⏳ Loading fiber cables for current view...</span>
         </div>
       )}
 
@@ -1190,10 +1409,21 @@ function App() {
               setPersistentLine(info.object);
               return true;
             }
+            if (info.object && info.layer?.id === 'fiber-cables') {
+              event.stopPropagation();
+              setHoveredFiberCable(info.object);
+              setIsFiberTooltipPersistent(true);
+              setPersistentFiberCable(info.object);
+              return true;
+            }
             // Click on empty space - clear hover but keep persistent
             if (!info.object) {
               setHoverInfo(null);
               setHoveredLine(null);
+              // Only clear fiber hover if not persistent (persistent stays visible)
+              if (!isFiberTooltipPersistent) {
+                setHoveredFiberCable(null);
+              }
             }
             return false;
           }}
@@ -1231,9 +1461,11 @@ function App() {
         showPowerPlants={showPowerPlants}
         showWfsCables={showWfsCables}
         showHifldLines={showHifldLines}
+        showFiberCables={showFiberCables}
         onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
         onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
+        onToggleFiberCables={() => setShowFiberCables(!showFiberCables)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
         onSelectAllSources={selectAllSources}
@@ -1336,6 +1568,137 @@ function App() {
                      <p>Excess Capacity: {excessCapacity.toFixed(1)} MW</p>
                      <p>Capacity Factor: {capacityFactor.toFixed(1)}%</p>
                      <p>Coordinates: {plant.coordinates[1].toFixed(4)}, {plant.coordinates[0].toFixed(4)}</p>
+
+                     {/* Nearby Fiber Cables Section - Only show when persistent and fiber cables are loaded */}
+                     {isTooltipPersistent && showFiberCables && (
+                       <div style={{ 
+                         marginTop: '24px', 
+                         paddingTop: '20px', 
+                         borderTop: '2px solid rgba(200, 0, 200, 0.3)',
+                         marginBottom: '10px'
+                       }}>
+                         <div style={{ 
+                           marginBottom: '16px', 
+                           display: 'flex',
+                           alignItems: 'center',
+                           justifyContent: 'space-between'
+                         }}>
+                           <h4 style={{ 
+                             fontSize: '16px', 
+                             fontWeight: '600',
+                             display: 'flex',
+                             alignItems: 'center',
+                             gap: '8px',
+                             margin: 0
+                           }}>
+                             <span style={{ color: '#c800c8', fontSize: '20px' }}>📡</span>
+                             Nearby Fiber Cables
+                           </h4>
+                           {!isCalculatingNearbyFiber && (
+                             <span style={{ 
+                               fontSize: '14px',
+                               fontWeight: '500',
+                               color: '#c800c8',
+                               backgroundColor: 'rgba(200, 0, 200, 0.15)',
+                               padding: '4px 10px',
+                               borderRadius: '12px'
+                             }}>
+                               {nearbyFiberCables.length} found
+                             </span>
+                           )}
+                         </div>
+                         {isCalculatingNearbyFiber ? (
+                           <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '14px', textAlign: 'center', padding: '20px' }}>
+                             Calculating...
+                           </p>
+                         ) : nearbyFiberCables.length > 0 ? (
+                           <div style={{ 
+                             maxHeight: '300px', 
+                             overflowY: 'auto',
+                             display: 'flex',
+                             flexDirection: 'column',
+                             gap: '10px'
+                           }}>
+                             {nearbyFiberCables.map((cable, idx) => {
+                               const p = cable.properties as Record<string, unknown>;
+                               return (
+                                 <div 
+                                   key={cable.id || idx}
+                                   onClick={() => {
+                                     setHoveredFiberCable(cable);
+                                     setIsFiberTooltipPersistent(true);
+                                     setPersistentFiberCable(cable);
+                                   }}
+                                   style={{
+                                     padding: '12px',
+                                     backgroundColor: 'rgba(200, 0, 200, 0.1)',
+                                     borderRadius: '6px',
+                                     border: '1px solid rgba(200, 0, 200, 0.3)',
+                                     fontSize: '13px',
+                                     cursor: 'pointer',
+                                     transition: 'all 0.2s',
+                                     display: 'flex',
+                                     flexDirection: 'column',
+                                     gap: '6px'
+                                   }}
+                                   onMouseEnter={(e) => {
+                                     e.currentTarget.style.backgroundColor = 'rgba(200, 0, 200, 0.2)';
+                                     e.currentTarget.style.borderColor = 'rgba(200, 0, 200, 0.5)';
+                                   }}
+                                   onMouseLeave={(e) => {
+                                     e.currentTarget.style.backgroundColor = 'rgba(200, 0, 200, 0.1)';
+                                     e.currentTarget.style.borderColor = 'rgba(200, 0, 200, 0.3)';
+                                   }}
+                                 >
+                                   <div style={{ 
+                                     fontWeight: '600', 
+                                     fontSize: '14px',
+                                     display: 'flex', 
+                                     justifyContent: 'space-between', 
+                                     alignItems: 'center',
+                                     marginBottom: '4px'
+                                   }}>
+                                     <span style={{ color: '#fff' }}>
+                                       {p.NAME ? String(p.NAME) : `Fiber Cable ${idx + 1}`}
+                                     </span>
+                                     <span style={{ 
+                                       fontSize: '13px', 
+                                       color: '#c800c8', 
+                                       fontWeight: '700',
+                                       backgroundColor: 'rgba(200, 0, 200, 0.2)',
+                                       padding: '2px 8px',
+                                       borderRadius: '10px'
+                                     }}>
+                                       {cable.distance.toFixed(2)} mi
+                                     </span>
+                                   </div>
+                                   {p.OPERATOR != null && p.OPERATOR !== '' && (
+                                     <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
+                                       <strong>Operator:</strong> {String(p.OPERATOR)}
+                                     </div>
+                                   )}
+                                   {p.SERVICE_TYPE != null && p.SERVICE_TYPE !== '' && (
+                                     <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
+                                       <strong>Service:</strong> {String(p.SERVICE_TYPE)}
+                                     </div>
+                                   )}
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         ) : (
+                           <p style={{ 
+                             color: 'rgba(255, 255, 255, 0.6)', 
+                             fontSize: '14px',
+                             textAlign: 'center',
+                             padding: '20px',
+                             fontStyle: 'italic'
+                           }}>
+                             No fiber cables found within 5 miles
+                           </p>
+                         )}
+                       </div>
+                     )}
                    </>
                  );
                }
@@ -1402,6 +1765,137 @@ function App() {
                          </button>
                        </div>
                      </>
+                   )}
+
+                   {/* Nearby Fiber Cables Section - Only show when persistent and fiber cables are loaded */}
+                   {isTooltipPersistent && showFiberCables && (
+                     <div style={{ 
+                       marginTop: '24px', 
+                       paddingTop: '20px', 
+                       borderTop: '2px solid rgba(200, 0, 200, 0.3)',
+                       marginBottom: '10px'
+                     }}>
+                       <div style={{ 
+                         marginBottom: '16px', 
+                         display: 'flex',
+                         alignItems: 'center',
+                         justifyContent: 'space-between'
+                       }}>
+                         <h4 style={{ 
+                           fontSize: '16px', 
+                           fontWeight: '600',
+                           display: 'flex',
+                           alignItems: 'center',
+                           gap: '8px',
+                           margin: 0
+                         }}>
+                           <span style={{ color: '#c800c8', fontSize: '20px' }}>📡</span>
+                           Nearby Fiber Cables
+                         </h4>
+                         {!isCalculatingNearbyFiber && (
+                           <span style={{ 
+                             fontSize: '14px',
+                             fontWeight: '500',
+                             color: '#c800c8',
+                             backgroundColor: 'rgba(200, 0, 200, 0.15)',
+                             padding: '4px 10px',
+                             borderRadius: '12px'
+                           }}>
+                             {nearbyFiberCables.length} found
+                           </span>
+                         )}
+                       </div>
+                       {isCalculatingNearbyFiber ? (
+                         <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '14px', textAlign: 'center', padding: '20px' }}>
+                           Calculating...
+                         </p>
+                       ) : nearbyFiberCables.length > 0 ? (
+                         <div style={{ 
+                           maxHeight: '300px', 
+                           overflowY: 'auto',
+                           display: 'flex',
+                           flexDirection: 'column',
+                           gap: '10px'
+                         }}>
+                           {nearbyFiberCables.map((cable, idx) => {
+                             const p = cable.properties as Record<string, unknown>;
+                             return (
+                               <div 
+                                 key={cable.id || idx}
+                                 onClick={() => {
+                                   setHoveredFiberCable(cable);
+                                   setIsFiberTooltipPersistent(true);
+                                   setPersistentFiberCable(cable);
+                                 }}
+                                 style={{
+                                   padding: '12px',
+                                   backgroundColor: 'rgba(200, 0, 200, 0.1)',
+                                   borderRadius: '6px',
+                                   border: '1px solid rgba(200, 0, 200, 0.3)',
+                                   fontSize: '13px',
+                                   cursor: 'pointer',
+                                   transition: 'all 0.2s',
+                                   display: 'flex',
+                                   flexDirection: 'column',
+                                   gap: '6px'
+                                 }}
+                                 onMouseEnter={(e) => {
+                                   e.currentTarget.style.backgroundColor = 'rgba(200, 0, 200, 0.2)';
+                                   e.currentTarget.style.borderColor = 'rgba(200, 0, 200, 0.5)';
+                                 }}
+                                 onMouseLeave={(e) => {
+                                   e.currentTarget.style.backgroundColor = 'rgba(200, 0, 200, 0.1)';
+                                   e.currentTarget.style.borderColor = 'rgba(200, 0, 200, 0.3)';
+                                 }}
+                               >
+                                 <div style={{ 
+                                   fontWeight: '600', 
+                                   fontSize: '14px',
+                                   display: 'flex', 
+                                   justifyContent: 'space-between', 
+                                   alignItems: 'center',
+                                   marginBottom: '4px'
+                                 }}>
+                                   <span style={{ color: '#fff' }}>
+                                     {p.NAME ? String(p.NAME) : `Fiber Cable ${idx + 1}`}
+                                   </span>
+                                   <span style={{ 
+                                     fontSize: '13px', 
+                                     color: '#c800c8', 
+                                     fontWeight: '700',
+                                     backgroundColor: 'rgba(200, 0, 200, 0.2)',
+                                     padding: '2px 8px',
+                                     borderRadius: '10px'
+                                   }}>
+                                     {cable.distance.toFixed(2)} mi
+                                   </span>
+                                 </div>
+                                 {p.OPERATOR != null && p.OPERATOR !== '' && (
+                                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
+                                     <strong>Operator:</strong> {String(p.OPERATOR)}
+                                   </div>
+                                 )}
+                                 {p.SERVICE_TYPE != null && p.SERVICE_TYPE !== '' && (
+                                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
+                                     <strong>Service:</strong> {String(p.SERVICE_TYPE)}
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                           })}
+                         </div>
+                       ) : (
+                         <p style={{ 
+                           color: 'rgba(255, 255, 255, 0.6)', 
+                           fontSize: '14px',
+                           textAlign: 'center',
+                           padding: '20px',
+                           fontStyle: 'italic'
+                         }}>
+                           No fiber cables found within 5 miles
+                         </p>
+                       )}
+                     </div>
                    )}
                  </>
                );
@@ -1478,6 +1972,54 @@ function App() {
               );
             })()}
           </div>
+          )}
+
+          {/* Fiber Cable Info Panel */}
+          {(hoveredFiberCable || (isFiberTooltipPersistent && persistentFiberCable)) && (
+            <div className="info-panel line-panel">
+              {isFiberTooltipPersistent && (
+                <button
+                  className="close-button"
+                  onClick={() => {
+                    setIsFiberTooltipPersistent(false);
+                    setHoveredFiberCable(null);
+                    setPersistentFiberCable(null);
+                  }}
+                  aria-label="Close tooltip"
+                >
+                  <X size={16} />
+                </button>
+              )}
+              {(() => {
+                // Show persistent cable if set, otherwise show hovered cable
+                const fiber = (isFiberTooltipPersistent && persistentFiberCable) ? persistentFiberCable : hoveredFiberCable;
+                if (!fiber) return null;
+                const p = fiber.properties as Record<string, unknown>;
+                return (
+                  <>
+                    <h3>Fiber Cable</h3>
+                    {p.NAME != null && p.NAME !== '' && <p><strong>Name:</strong> {String(p.NAME)}</p>}
+                    {p.OPERATOR != null && p.OPERATOR !== '' && <p><strong>Operator:</strong> {String(p.OPERATOR)}</p>}
+                    {p.OWNER != null && p.OWNER !== '' && <p><strong>Owner:</strong> {String(p.OWNER)}</p>}
+                    {p.TYPE != null && p.TYPE !== '' && <p><strong>Type:</strong> {String(p.TYPE)}</p>}
+                    {p.STATUS != null && p.STATUS !== '' && <p><strong>Status:</strong> {String(p.STATUS)}</p>}
+                    {p.SERVICE_TYPE != null && p.SERVICE_TYPE !== '' && <p><strong>Service Type:</strong> {String(p.SERVICE_TYPE)}</p>}
+                    {p.MILES != null && <p><strong>Length:</strong> {Number(p.MILES).toFixed(2)} miles</p>}
+                    {p.STATE_NAME != null && p.STATE_NAME !== '' && <p><strong>State:</strong> {String(p.STATE_NAME)}</p>}
+                    {p.CNTY_NAME != null && p.CNTY_NAME !== '' && <p><strong>County:</strong> {String(p.CNTY_NAME)}</p>}
+                    {p.CNTRY_NAME != null && p.CNTRY_NAME !== '' && <p><strong>Country:</strong> {String(p.CNTRY_NAME)}</p>}
+                    {p.QUALITY != null && p.QUALITY !== '' && <p><strong>Quality:</strong> {String(p.QUALITY)}</p>}
+                    {p.LOC_ID != null && p.LOC_ID !== '' && <p><strong>ID:</strong> {String(p.LOC_ID)}</p>}
+                    {fiber.path && fiber.path.length > 0 && (
+                      <p><strong>Start:</strong> {fiber.path[0][1].toFixed(4)}, {fiber.path[0][0].toFixed(4)}</p>
+                    )}
+                    {fiber.path && fiber.path.length > 1 && (
+                      <p><strong>End:</strong> {fiber.path[fiber.path.length - 1][1].toFixed(4)}, {fiber.path[fiber.path.length - 1][0].toFixed(4)}</p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           )}
         </div>
     </div>
