@@ -15,9 +15,11 @@ interface SidePanelProps {
   showPowerPlants: boolean;
   showWfsCables: boolean;
   showHifldLines: boolean;
+  showFiberCables: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
+  onToggleFiberCables: () => void;
 
   // Filtering state
   filteredSources: Set<string>;
@@ -95,9 +97,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
   showPowerPlants,
   showWfsCables,
   showHifldLines,
+  showFiberCables,
   onTogglePowerPlants,
   onToggleWfsCables,
   onToggleHifldLines,
+  onToggleFiberCables,
 
   // Filtering
   filteredSources,
@@ -208,9 +212,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 showPowerPlants={showPowerPlants}
                 showWfsCables={showWfsCables}
                 showHifldLines={showHifldLines}
+                showFiberCables={showFiberCables}
                 onTogglePowerPlants={onTogglePowerPlants}
                 onToggleWfsCables={onToggleWfsCables}
                 onToggleHifldLines={onToggleHifldLines}
+                onToggleFiberCables={onToggleFiberCables}
                 showCanadianPlants={showCanadianPlants}
                 showAmericanPlants={showAmericanPlants}
                 showKazakhstanPlants={showKazakhstanPlants}

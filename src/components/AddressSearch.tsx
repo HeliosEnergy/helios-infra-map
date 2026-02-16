@@ -85,14 +85,15 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ onLocationSelect, mapboxT
       const lngDiff = maxLng - minLng;
       const maxDiff = Math.max(latDiff, lngDiff);
       
-      // Rough calculation for zoom level
-      if (maxDiff > 10) zoom = 4;
-      else if (maxDiff > 5) zoom = 6;
+      // Rough calculation for zoom level (minimum 8 so fiber loads for any city/state)
+      if (maxDiff > 10) zoom = 8;
+      else if (maxDiff > 5) zoom = 8;
       else if (maxDiff > 1) zoom = 8;
       else if (maxDiff > 0.5) zoom = 10;
       else if (maxDiff > 0.1) zoom = 12;
       else zoom = 14;
     }
+    zoom = Math.max(8, zoom);
 
     onLocationSelect([lng, lat], zoom, result.place_name);
     setSearchQuery(result.place_name);
