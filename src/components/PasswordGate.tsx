@@ -1,71 +1,118 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './PasswordGate.css';
 import { PasswordGateProvider } from '../contexts/PasswordGateContext';
+import {
+  authenticatedFetch as authenticatedFetchWithToken,
+  clearAuthToken,
+  getAuthToken,
+  setAuthToken,
+} from '../utils/auth';
 
 type PasswordGateProps = {
   children: React.ReactNode;
 };
 
-const STORAGE_KEY = 'helios-map-authenticated';
-
-/** Parse VITE_APP_PASSWORD: single value or comma-separated list (trimmed). */
-const parseAllowedPasswords = (raw: string | undefined): string[] => {
-  if (!raw || typeof raw !== 'string') return [];
-  return raw
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean);
-};
-
 const PasswordGate = ({ children }: PasswordGateProps) => {
-  const allowedPasswords = useMemo(
-    () => parseAllowedPasswords(import.meta.env.VITE_APP_PASSWORD),
-    []
-  );
-  const isGateEnabled = allowedPasswords.length > 0;
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
-  const [isUnlocked, setIsUnlocked] = useState(() => {
-    if (!isGateEnabled || typeof window === 'undefined') {
-      return true;
-    }
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
-  });
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [authToken, setAuthTokenState] = useState<string | null>(null);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  const isGateEnabled = true;
+
+  const handleLogout = useCallback(() => {
+    clearAuthToken();
+    setAuthTokenState(null);
+    setInput('');
+    setError('');
+    setIsUnlocked(false);
+  }, []);
 
   useEffect(() => {
-    if (!isGateEnabled) {
-      setIsUnlocked(true);
-      return;
-    }
-    if (window.localStorage.getItem(STORAGE_KEY) === 'true') {
-      setIsUnlocked(true);
-    }
-  }, [isGateEnabled]);
+    let cancelled = false;
 
-  const handleSubmit = (event: React.FormEvent) => {
+    const validateExistingSession = async () => {
+      try {
+        const token = getAuthToken();
+        if (!token) {
+          if (!cancelled) setIsUnlocked(false);
+          return;
+        }
+
+        const response = await fetch('/api/auth', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          handleLogout();
+          return;
+        }
+
+        const data = (await response.json()) as { authenticated?: boolean };
+        if (data.authenticated) {
+          if (!cancelled) {
+            setAuthTokenState(token);
+            setIsUnlocked(true);
+          }
+        } else {
+          handleLogout();
+        }
+      } catch {
+        handleLogout();
+      } finally {
+        if (!cancelled) {
+          setIsCheckingAuth(false);
+        }
+      }
+    };
+
+    validateExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleLogout]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
 
-    if (!isGateEnabled) {
-      setIsUnlocked(true);
-      return;
-    }
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: input.trim() }),
+      });
 
-    const trimmed = input.trim();
-    if (allowedPasswords.some((p) => trimmed === p)) {
-      window.localStorage.setItem(STORAGE_KEY, 'true');
+      if (response.status === 401) {
+        setError('Incorrect password. Please try again.');
+        return;
+      }
+
+      if (!response.ok) {
+        setError('Authentication failed. Please try again.');
+        return;
+      }
+
+      const data = (await response.json()) as { token?: string };
+      if (!data.token) {
+        setError('Authentication failed. Please try again.');
+        return;
+      }
+
+      setAuthToken(data.token);
+      setAuthTokenState(data.token);
       setIsUnlocked(true);
       setInput('');
-      return;
+    } catch {
+      setError('Authentication request failed. Please check your connection.');
     }
-
-    setError('Incorrect password. Please try again.');
-  };
-
-  const handleLogout = () => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setInput('');
-    setIsUnlocked(false);
   };
 
   const overlay = (
@@ -91,13 +138,21 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     </div>
   );
 
+  const isAuthenticated = isUnlocked && !!authToken;
+
   return (
-    <PasswordGateProvider value={{ isGateEnabled, lockApp: handleLogout }}>
-      {isGateEnabled && !isUnlocked ? overlay : children}
+    <PasswordGateProvider
+      value={{
+        isGateEnabled,
+        isAuthenticated,
+        authToken,
+        authenticatedFetch: authenticatedFetchWithToken,
+        lockApp: handleLogout,
+      }}
+    >
+      {isCheckingAuth ? null : isGateEnabled && !isUnlocked ? overlay : children}
     </PasswordGateProvider>
   );
 };
 
 export default PasswordGate;
-
-

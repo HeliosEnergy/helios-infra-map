@@ -2,6 +2,7 @@ import type { Cable } from '../models/Cable';
 import { processWfsCableData } from './geoJsonParser';
 import { CableCache, CacheManager } from './cache';
 import type { GeoJsonObject } from './geoJsonParser';
+import { authenticatedFetch } from './auth';
 
 // Test data for fallback - more realistic submarine cable data
 const testCables: GeoJsonObject = {
@@ -67,8 +68,8 @@ const testCables: GeoJsonObject = {
  * @returns Promise resolving to array of Cable objects
  */
 async function fetchFreshCableData(): Promise<Cable[]> {
-  // Use Vercel API route for proxying requests in both development and production
-  const baseUrl = '/itu-proxy/geoserver/itu-geocatalogue/ows';
+  // Use authenticated API route in both development and production.
+  const baseUrl = '/api/wfs/ows';
 
   const params = new URLSearchParams({
     service: 'WFS',
@@ -84,7 +85,7 @@ async function fetchFreshCableData(): Promise<Cable[]> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-  const response = await fetch(url, {
+  const response = await authenticatedFetch(url, {
     signal: controller.signal
   });
 

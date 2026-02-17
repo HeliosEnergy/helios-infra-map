@@ -1,14 +1,52 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import path from 'path';
 import fs from 'fs/promises';
+import { requireAuth } from './_lib/auth.js';
+import { applyCors, handleCorsPreflight } from './_lib/cors.js';
+import { applyRateLimit } from './_lib/rateLimit.js';
 
 // Simple in-memory cache per bbox (keyed by bbox string)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const RATE_LIMIT = {
+  key: 'fiber-bbox',
+  maxRequests: 30,
+  windowMs: 60 * 1000,
+};
 
 // Grid tile size (degrees)
 // Can be overridden via FIBER_TILE_SIZE env var (default: 5 for current tiles, use 2 for optimized tiles)
 const TILE_SIZE = parseInt(process.env.FIBER_TILE_SIZE || '5', 10);
+const FIBER_PROPERTIES_WHITELIST = [
+  'NAME',
+  'OPERATOR',
+  'OWNER',
+  'TYPE',
+  'STATUS',
+  'SERVICE_TYPE',
+  'MILES',
+  'STATE_NAME',
+  'CNTY_NAME',
+  'CNTRY_NAME',
+  'QUALITY',
+  'LOC_ID',
+] as const;
+
+function sanitizeFeature(feature: any): any {
+  const sanitizedProperties: Record<string, any> = {};
+  const sourceProperties = feature?.properties ?? {};
+  for (const key of FIBER_PROPERTIES_WHITELIST) {
+    if (sourceProperties[key] !== undefined) {
+      sanitizedProperties[key] = sourceProperties[key];
+    }
+  }
+
+  return {
+    type: feature?.type || 'Feature',
+    geometry: feature?.geometry,
+    properties: sanitizedProperties,
+  };
+}
 
 /**
  * Calculate which grid tiles intersect with the given bbox
@@ -80,13 +118,15 @@ async function readTileFromDisk(minLon: number, minLat: number): Promise<{ type:
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+  if (handleCorsPreflight(req, res)) return;
+  if (!applyCors(req, res)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
   }
+  if (!applyRateLimit(req, res, RATE_LIMIT)) return;
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (!requireAuth(req, res)) return;
 
   // Get bbox from query params
   const minLon = parseFloat(req.query.minLon as string);
@@ -121,14 +161,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Check cache
   const cached = cache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_TTL) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes
+    res.setHeader('Cache-Control', 'private, max-age=600'); // 10 minutes
     return res.status(200).json(cached.data);
   }
 
   try {
-    // Get base URL from environment variable, or use local dev server
-    // In development, Vite serves files from public/ at root
+    // Get tile source from environment variable, or use local dev server files.
     const isDev = process.env.NODE_ENV === 'development' || !process.env.VERCEL;
     let baseUrl = process.env.FIBER_TILES_S3_URL;
     
@@ -147,7 +185,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         baseUrl = `${origin}/fiber-tiles`;
       } else {
-        baseUrl = 'https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/fiber-tiles';
+        return res.status(500).json({
+          error: 'FIBER_TILES_S3_URL is not configured',
+        });
       }
     }
 
@@ -318,10 +358,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`Skipping precise bbox filtering for ${featuresToReturn.length} features (performance optimization)`);
     }
 
+    const sanitizedFeatures = filteredFeatures.map(sanitizeFeature);
+
     // Create merged GeoJSON response
     const mergedGeoJson = {
       type: 'FeatureCollection',
-      features: filteredFeatures,
+      features: sanitizedFeatures,
     };
 
     // Update cache
@@ -331,10 +373,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Set response headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes
+    res.setHeader('Cache-Control', 'private, max-age=600'); // 10 minutes
 
     // Send response
     return res.status(200).json(mergedGeoJson);

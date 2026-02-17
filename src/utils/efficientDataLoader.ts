@@ -1,6 +1,7 @@
 import { CacheManager } from './cache';
 import { globalProgressIndicator } from './progressIndicator';
 import type { PowerPlant } from '../models/PowerPlant';
+import { authenticatedFetch } from './auth';
 
 // Constants for caching
 const EIA_DATA_CACHE_KEY = 'eia-power-plants-v1';
@@ -31,7 +32,7 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
-    const response = await fetch('/api/power-plants', {
+    const response = await authenticatedFetch('/api/power-plants', {
       signal: controller.signal
     });
     
@@ -52,8 +53,10 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
     
     console.log(`Received ${rawData.length} plants from API`);
     
-    // Transform the data
-    const plants = transformEIADataToPowerPlants(rawData);
+    // API now returns pre-processed PowerPlant[]; keep legacy transform path for compatibility.
+    const plants = rawData.length > 0 && rawData[0]?.coordinates && rawData[0]?.output !== undefined
+      ? (rawData as PowerPlant[])
+      : transformEIADataToPowerPlants(rawData);
     
     // Update progress
     globalProgressIndicator.update(80, `Processed ${plants.length} plants, caching...`);
@@ -68,41 +71,6 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
   } catch (error: any) {
     globalProgressIndicator.update(0, 'Error loading data');
     console.error('Error loading EIA data efficiently:', error);
-    
-    // Try to load from fallback local data if available
-    try {
-      console.log('Attempting local fallback: /data/eia_aggregated_plant_capacity.json');
-      const localFallback = await fetch('/data/eia_aggregated_plant_capacity.json');
-      if (localFallback.ok) {
-        const rawData = await localFallback.json();
-        const plants = transformEIADataToPowerPlants(rawData);
-        cacheEIAData(plants);
-        globalProgressIndicator.update(100, `Loaded ${plants.length} power plants (local fallback)`);
-        return plants;
-      } else {
-        console.warn('Local fallback not available, status:', localFallback.status);
-      }
-    } catch (fallbackError) {
-      console.warn('Local fallback failed:', fallbackError);
-    }
-    
-    // Final attempt: S3 JSON with generation
-    try {
-      console.log('Attempting S3 fallback: eia_aggregated_plant_capacity_with_generation.json');
-      const s3Fallback = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/eia_aggregated_plant_capacity_with_generation.json');
-      if (s3Fallback.ok) {
-        const rawData = await s3Fallback.json();
-        const plants = transformEIADataToPowerPlants(rawData);
-        cacheEIAData(plants);
-        globalProgressIndicator.update(100, `Loaded ${plants.length} power plants (S3 fallback)`);
-        return plants;
-      } else {
-        console.warn('S3 fallback not available, status:', s3Fallback.status);
-      }
-    } catch (s3FallbackError) {
-      console.error('S3 fallback failed:', s3FallbackError);
-    }
-
     return []; // Return empty array as fallback
   }
 }
@@ -116,8 +84,16 @@ function transformEIAItemToPowerPlant(item: any): PowerPlant | null {
   const latitude = parseFloat(item.latitude);
   const longitude = parseFloat(item.longitude);
   const nameplateCapacity = parseFloat(item['nameplate-capacity-mw']) || 0;
-  const netSummerCapacity = parseFloat(item['net-summer-capacity-mw']);
-  const netWinterCapacity = parseFloat(item['net-winter-capacity-mw']);
+  const netSummerRaw = item['net-summer-capacity-mw'];
+  const netWinterRaw = item['net-winter-capacity-mw'];
+  const netSummerCapacity =
+    netSummerRaw === undefined || netSummerRaw === null || netSummerRaw === ''
+      ? undefined
+      : parseFloat(netSummerRaw);
+  const netWinterCapacity =
+    netWinterRaw === undefined || netWinterRaw === null || netWinterRaw === ''
+      ? undefined
+      : parseFloat(netWinterRaw);
 
   // Skip if invalid coordinates or no capacity
   if (isNaN(latitude) || isNaN(longitude) || nameplateCapacity <= 0) {
@@ -127,7 +103,10 @@ function transformEIAItemToPowerPlant(item: any): PowerPlant | null {
   const source = mapEnergySource(item['energy-source-desc'] || 'Other');
 
   // Calculate proxy capacity factor: net summer capacity utilization ratio
-  const capacityFactor = nameplateCapacity > 0 ? (netSummerCapacity / nameplateCapacity) * 100 : null;
+  const capacityFactor =
+    nameplateCapacity > 0 && typeof netSummerCapacity === 'number'
+      ? (netSummerCapacity / nameplateCapacity) * 100
+      : null;
 
   const plant: PowerPlant = {
     id: `us-${item.plantid}-${item.generatorid}`,

@@ -1,131 +1,25 @@
 import type { PowerPlant } from '../models/PowerPlant';
+import { authenticatedFetch } from './auth';
 
 // Function to load and process power plants: Canada from CSV, US from EIA JSON, Global DB for Kazakhstan
 export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
   try {
-    console.log('Starting data loading...');
-    
-    // Load Canada data from CSV files
-    console.log('Loading Canada data...');
-    const largePlantsResponse = await fetch('/data/Power_Plants,_100_MW_or_more.csv');
-    const renewablePlantsResponse = await fetch('/data/Renewable_Energy_Power_Plants,_1_MW_or_more.csv');
-    
-    console.log('Canada data responses:', {
-      large: largePlantsResponse.status,
-      renewable: renewablePlantsResponse.status
+    const response = await authenticatedFetch('/api/power-plants', {
+      headers: {
+        Accept: 'application/json',
+      },
     });
 
-    const largePlantsText = await largePlantsResponse.text();
-    const renewablePlantsText = await renewablePlantsResponse.text();
-
-    // Parse CSV files (now filtered to Canada only)
-    const largePlants = parsePowerPlantCSV(largePlantsText, 'large');
-    const renewablePlants = parsePowerPlantCSV(renewablePlantsText, 'renewable');
-    
-    console.log('Parsed plants:', {
-      large: largePlants.length,
-      renewable: renewablePlants.length
-    });
-
-    // Try to load global database from AWS S3 (with error handling)
-    let globalKazakhstanPlants: PowerPlant[] = [];
-    try {
-      console.log('Loading global database from S3...');
-      const globalPlantsResponse = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/global_power_plant_database.csv');
-      console.log('S3 response status:', globalPlantsResponse.status);
-      
-      if (globalPlantsResponse.ok) {
-        const globalPlantsText = await globalPlantsResponse.text();
-        globalKazakhstanPlants = parseGlobalPowerPlantCSV(globalPlantsText);
-               const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
-               const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
-               const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
-               const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
-               console.log('Global plants loaded:', globalKazakhstanPlants.length);
-               console.log('Kazakhstan plants:', kazakhstanCount);
-               console.log('UAE plants:', uaeCount);
-               console.log('India plants:', indiaCount);
-               console.log('Kyrgyzstan plants:', kyrgyzstanCount);
-      } else {
-        console.warn('Failed to load global database from S3, trying local file...');
-        // Fallback to local file
-        try {
-          const localResponse = await fetch('/data/global_power_plant_database.csv');
-          if (localResponse.ok) {
-            const localPlantsText = await localResponse.text();
-            globalKazakhstanPlants = parseGlobalPowerPlantCSV(localPlantsText);
-            const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
-            const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
-            const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
-            const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
-            console.log('Global plants loaded from local file:', globalKazakhstanPlants.length);
-            console.log('Kazakhstan plants:', kazakhstanCount);
-            console.log('UAE plants:', uaeCount);
-            console.log('India plants:', indiaCount);
-            console.log('Kyrgyzstan plants:', kyrgyzstanCount);
-          } else {
-            console.warn('Failed to load global database from local file as well');
-          }
-        } catch (localError) {
-          console.warn('Error loading global database from local file:', localError);
-        }
-      }
-    } catch (s3Error) {
-      console.warn('Error loading global database from S3, trying local file...', s3Error);
-      // Fallback to local file
-      try {
-        const localResponse = await fetch('/data/global_power_plant_database.csv');
-        if (localResponse.ok) {
-          const localPlantsText = await localResponse.text();
-          globalKazakhstanPlants = parseGlobalPowerPlantCSV(localPlantsText);
-          const kazakhstanCount = globalKazakhstanPlants.filter(p => p.country === 'KZ').length;
-          const uaeCount = globalKazakhstanPlants.filter(p => p.country === 'AE').length;
-          const indiaCount = globalKazakhstanPlants.filter(p => p.country === 'IN').length;
-          const kyrgyzstanCount = globalKazakhstanPlants.filter(p => p.country === 'KG').length;
-          console.log('Global plants loaded from local file:', globalKazakhstanPlants.length);
-          console.log('Kazakhstan plants:', kazakhstanCount);
-          console.log('UAE plants:', uaeCount);
-          console.log('India plants:', indiaCount);
-          console.log('Kyrgyzstan plants:', kyrgyzstanCount);
-        } else {
-          console.warn('Failed to load global database from local file as well');
-        }
-      } catch (localError) {
-        console.warn('Error loading global database from local file:', localError);
-      }
+    if (!response.ok) {
+      throw new Error(`Failed to load power plants: ${response.status} ${response.statusText}`);
     }
 
-    // Use global database for all countries EXCEPT CA (CA from CSVs, US now from global database)
-    if (Array.isArray(globalKazakhstanPlants) && globalKazakhstanPlants.length > 0) {
-      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'CA');
+    const payload = await response.json();
+    if (!Array.isArray(payload)) {
+      throw new Error('Invalid power plant payload from API');
     }
 
-    // Extract US plants from global database
-    const usPlants = globalKazakhstanPlants.filter(p => p.country === 'US');
-    console.log('US plants loaded from global database:', usPlants.length);
-    
-    // Remove US plants from globalKazakhstanPlants array (they're now in usPlants)
-    globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US');
-
-    // Combine and aggregate plants (ensure all arrays are defined)
-    const allPlants = [
-      ...(largePlants || []), 
-      ...(renewablePlants || []), 
-      ...(globalKazakhstanPlants || []), 
-      ...(usPlants || [])
-    ];
-    console.log('Total plants before aggregation:', allPlants.length);
-    
-    if (allPlants.length === 0) {
-      console.warn('No plants loaded from any source');
-      return [];
-    }
-    
-    const aggregatedPlants = aggregatePowerPlants(allPlants);
-    console.log('Total plants after aggregation:', aggregatedPlants.length);
-    
-
-    return aggregatedPlants;
+    return payload as PowerPlant[];
   } catch (error) {
     console.error('Error loading power plant data:', error);
     return [];

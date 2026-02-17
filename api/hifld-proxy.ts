@@ -1,64 +1,100 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireAuth } from './_lib/auth.js';
+import { applyCors, handleCorsPreflight } from './_lib/cors.js';
+import { applyRateLimit } from './_lib/rateLimit.js';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
+const RATE_LIMIT = {
+  key: 'hifld-proxy',
+  maxRequests: 10,
+  windowMs: 60 * 1000,
+};
 
-  try {
-    // Extract query parameters from the request
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(req.query)) {
-      if (Array.isArray(value)) {
-        value.forEach(v => query.append(key, v as string));
-      } else if (value) {
-        query.append(key, value as string);
+const HIFLD_BASE_URL =
+  'https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0/query';
+
+const ALLOWED_FIELDS = ['VOLTAGE', 'VOLT_CLASS', 'OWNER', 'STATUS', 'TYPE', 'SUB_1', 'SUB_2', 'ID', 'OBJECTID'];
+
+const getSingleValue = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value[0] : value;
+
+const sanitizeGeoJson = (data: any): any => {
+  if (!data || !Array.isArray(data.features)) return data;
+
+  const features = data.features.map((feature: any) => {
+    const sourceProps = feature?.properties ?? {};
+    const properties: Record<string, unknown> = {};
+    for (const field of ALLOWED_FIELDS) {
+      if (sourceProps[field] !== undefined) {
+        properties[field] = sourceProps[field];
       }
     }
-    
-    // Construct the HIFLD ArcGIS REST API URL
-    const hifldUrl = `https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0/query?${query.toString()}`;
-    
-    // Forward the request to HIFLD service with timeout
+
+    return {
+      type: feature?.type || 'Feature',
+      geometry: feature?.geometry,
+      properties,
+    };
+  });
+
+  return {
+    ...data,
+    features,
+  };
+};
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (handleCorsPreflight(req, res)) return;
+  if (!applyCors(req, res)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  if (!applyRateLimit(req, res, RATE_LIMIT)) return;
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (!requireAuth(req, res)) return;
+
+  const rawOffset = Number(getSingleValue(req.query.resultOffset as string | string[] | undefined) || '0');
+  const rawLimit = Number(
+    getSingleValue(req.query.resultRecordCount as string | string[] | undefined) || '2000'
+  );
+  const resultOffset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+  const resultRecordCount =
+    Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(2000, Math.floor(rawLimit)) : 2000;
+
+  const query = new URLSearchParams({
+    where: '1=1',
+    outFields: ALLOWED_FIELDS.join(','),
+    outSR: '4326',
+    f: 'geojson',
+    resultOffset: String(resultOffset),
+    resultRecordCount: String(resultRecordCount),
+  });
+
+  const hifldUrl = `${HIFLD_BASE_URL}?${query.toString()}`;
+
+  try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout per request
-    
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
     const response = await fetch(hifldUrl, {
       method: 'GET',
       headers: {
         'User-Agent': 'Mapping-Infra-App/1.0',
-        'Accept': 'application/json,*/*',
+        Accept: 'application/json,*/*',
       },
       signal: controller.signal,
     });
-    
     clearTimeout(timeoutId);
-    
-    // Get the response data
-    const data = await response.text();
-    
-    // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
-    // Set the appropriate content type based on the HIFLD response
-    const contentType = response.headers.get('content-type');
-    if (contentType) {
-      res.setHeader('Content-Type', contentType);
-    } else {
-      res.setHeader('Content-Type', 'application/json');
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).send(text);
     }
-    
-    // Send the response
-    return res.status(response.status).send(data);
+
+    const data = await response.json();
+    const sanitized = sanitizeGeoJson(data);
+    return res.status(200).json(sanitized);
   } catch (error) {
     console.error('HIFLD Proxy Error:', error);
     return res.status(500).json({ error: 'Failed to fetch data from HIFLD service' });
   }
 }
-

@@ -1,6 +1,7 @@
 // Capacity Factor Calculator Agent
-// Processes EIA power plant data from S3-hosted eia_aggregated_plant_capacity_with_generation.json to calculate capacity factors
-// Note: Current data lacks generation information, so capacity factors cannot be calculated
+// Processes EIA-style payloads to calculate capacity factors.
+// Note: The secured power-plants endpoint returns normalized records, so generation may be unavailable.
+import { authenticatedFetch } from './auth';
 
 interface EIAData {
   response: {
@@ -140,15 +141,19 @@ export function calculateCapacityFactors(jsonData: EIAData): CapacityFactorResul
 }
 
 /**
- * Load and process eia_aggregated_plant_capacity_with_generation.json file from S3
+ * Load and process EIA data from the authenticated API.
  */
 export async function processEIAData(): Promise<CapacityFactorResult[]> {
   try {
-    const response = await fetch('https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/eia_aggregated_plant_capacity_with_generation.json');
+    const response = await authenticatedFetch('/api/power-plants');
     if (!response.ok) {
       throw new Error(`Failed to load EIA data: ${response.statusText}`);
     }
-    const jsonData: EIAData = await response.json();
+    const payload = await response.json();
+    if (!payload?.response?.data) {
+      return [];
+    }
+    const jsonData: EIAData = payload;
     return calculateCapacityFactors(jsonData);
   } catch (error) {
     console.error('Error processing EIA data:', error);

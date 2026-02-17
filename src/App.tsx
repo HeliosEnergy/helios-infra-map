@@ -17,6 +17,7 @@ import type { LineSegment } from './utils/spatialIndex';
 import { createLineIndex, queryLineIndex } from './utils/spatialIndex';
 import { calculatePowerRange, type PowerRange } from './utils/powerRangeCalculator';
 import { calculateBbox } from './utils/bboxUtils';
+import { authenticatedFetch } from './utils/auth';
 import RBush from 'rbush';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useTheme } from './hooks/useTheme';
@@ -938,7 +939,7 @@ function App() {
           maxLon: maxLon.toString(),
           maxLat: maxLat.toString(),
         });
-        const response = await fetch(`/api/fiber-bbox?${params.toString()}`);
+        const response = await authenticatedFetch(`/api/fiber-bbox?${params.toString()}`);
         if (!response.ok || cancelled) throw new Error(`Failed to load fiber cable data: ${response.statusText}`);
         const geojson = await response.json();
         const features = Array.isArray(geojson.features) ? geojson.features : [];

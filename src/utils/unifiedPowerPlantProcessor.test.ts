@@ -16,40 +16,46 @@ describe('unifiedPowerPlantProcessor', () => {
   });
 
   describe('loadAndProcessAllPowerPlants', () => {
-    it('should load and process power plant data from both CSV files', async () => {
-      // Mock CSV data
-      const mockLargePlantsCSV = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Energy Source"
-"Plant A","Canada",45.0,-75.0,150.5,"Hydroelectric"
-"Plant B","United States",40.0,-100.0,200.0,"Natural Gas"`;
+    it('should load power plant data from the authenticated API route', async () => {
+      const mockPlants: PowerPlant[] = [
+        {
+          id: 'plant-a',
+          name: 'Plant A',
+          output: 150.5,
+          outputDisplay: '150.5 MW',
+          source: 'hydro',
+          coordinates: [-75.0, 45.0],
+          country: 'CA',
+        },
+        {
+          id: 'plant-c',
+          name: 'Plant C',
+          output: 50.0,
+          outputDisplay: '50.0 MW',
+          source: 'wind',
+          coordinates: [-80.0, 50.0],
+          country: 'CA',
+        },
+        {
+          id: 'plant-e',
+          name: 'Plant E',
+          output: 125.0,
+          outputDisplay: '125.0 MW',
+          source: 'coal',
+          coordinates: [68.0, 43.0],
+          country: 'KZ',
+        },
+      ];
 
-      const mockRenewablePlantsCSV = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Renewable Energy Source"
-"Plant C","Canada",50.0,-80.0,50.0,"Wind"
-"Plant D","United States",35.0,-110.0,75.5,"Solar"`;
-
-      const mockKazakhstanPlantsCSV = `"Facility Name","Country","Latitude","Longitude","Total Capacity (MW)","Primary Energy Source"
-"Plant E","Kazakhstan",43.0,68.0,125.0,"Coal"`;
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('Power_Plants,_100_MW_or_more.csv')) {
-          return Promise.resolve({
-            text: () => Promise.resolve(mockLargePlantsCSV),
-          });
-        } else if (url.includes('Renewable_Energy_Power_Plants,_1_MW_or_more.csv')) {
-          return Promise.resolve({
-            text: () => Promise.resolve(mockRenewablePlantsCSV),
-          });
-        } else if (url.includes('Kazakhstan_Power_Plants.csv')) {
-          return Promise.resolve({
-            text: () => Promise.resolve(mockKazakhstanPlantsCSV),
-          });
-        }
-        return Promise.reject(new Error('Unknown URL'));
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve(mockPlants),
       });
 
       const result = await loadAndProcessAllPowerPlants();
 
-      // Only expecting 4 plants since US plants from large/renewable CSVs are filtered out
-      // and only Canada and Kazakhstan plants are included from those files
       expect(result).toHaveLength(3);
       expect(result[0].name).toBe('Plant A');
       expect(result[0].country).toBe('CA');
@@ -62,6 +68,12 @@ describe('unifiedPowerPlantProcessor', () => {
       expect(result[2].country).toBe('KZ');
       expect(result[2].source).toBe('coal');
       expect(result[2].output).toBe(125.0);
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/power-plants',
+        expect.objectContaining({
+          headers: expect.any(Headers),
+        })
+      );
     });
 
     it('should handle fetch errors gracefully', async () => {

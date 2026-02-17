@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import './DataVisualizations.css';
+import { authenticatedFetch } from '../utils/auth';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1919', '#82ca9d', '#ffc658'];
 
@@ -12,8 +13,40 @@ interface EIAPlantData {
   technology: string;
   statusDescription: string;
   stateName: string;
-  [key: string]: string | number;
+  output?: number;
+  source?: string;
+  name?: string;
+  plantName?: string;
+  rawData?: Record<string, string>;
+  [key: string]: string | number | Record<string, string> | undefined;
 }
+
+const getPlantCapacity = (plant: EIAPlantData): number => {
+  const raw = plant['net-summer-capacity-mw'] || plant['nameplate-capacity-mw'];
+  if (typeof raw === 'string') return parseFloat(raw || '0');
+  if (typeof plant.output === 'number') return plant.output;
+  return 0;
+};
+
+const getPlantWinterCapacity = (plant: EIAPlantData): number => {
+  const raw = plant['net-winter-capacity-mw'];
+  if (typeof raw === 'string') return parseFloat(raw || '0');
+  return getPlantCapacity(plant);
+};
+
+const getPlantStatus = (plant: EIAPlantData): string =>
+  plant.statusDescription || plant.rawData?.statusDescription || 'Unknown';
+
+const getPlantTechnology = (plant: EIAPlantData): string =>
+  plant.technology || plant.rawData?.technology || 'Unknown';
+
+const getPlantSource = (plant: EIAPlantData): string =>
+  plant['energy-source-desc'] || plant.source || 'Unknown';
+
+const getPlantName = (plant: EIAPlantData): string => plant.plantName || plant.name || 'Unknown';
+
+const getPlantState = (plant: EIAPlantData): string =>
+  plant.stateName || plant.rawData?.['State / Province / Territory'] || 'Unknown';
 
 const DataVisualizations: React.FC = () => {
   const [eiaData, setEiaData] = useState<EIAPlantData[]>([]);
@@ -23,7 +56,7 @@ const DataVisualizations: React.FC = () => {
     const loadData = async () => {
       try {
         // Load EIA data
-        const eiaResponse = await fetch('/data/eia_aggregated_plant_capacity.json');
+        const eiaResponse = await authenticatedFetch('/api/power-plants');
         const eiaJson = await eiaResponse.json();
         setEiaData(eiaJson);
 
@@ -44,8 +77,8 @@ const DataVisualizations: React.FC = () => {
     const regionMap: Record<string, number> = {};
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const region = plant.stateName || 'Unknown';
-      const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+      const region = getPlantState(plant);
+      const capacity = getPlantCapacity(plant);
       regionMap[region] = (regionMap[region] || 0) + capacity;
     });
 
@@ -64,8 +97,8 @@ const DataVisualizations: React.FC = () => {
     const sourceMap: Record<string, { total: number, count: number }> = {};
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const source = plant['energy-source-desc'] || 'Unknown';
-      const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+      const source = getPlantSource(plant);
+      const capacity = getPlantCapacity(plant);
 
       if (!sourceMap[source]) {
         sourceMap[source] = { total: 0, count: 0 };
@@ -90,8 +123,8 @@ const DataVisualizations: React.FC = () => {
     const techMap: Record<string, number> = {};
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const tech = plant.technology || 'Unknown';
-      const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+      const tech = getPlantTechnology(plant);
+      const capacity = getPlantCapacity(plant);
       techMap[tech] = (techMap[tech] || 0) + capacity;
     });
 
@@ -110,7 +143,7 @@ const DataVisualizations: React.FC = () => {
     const statusMap: Record<string, number> = {};
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const status = plant.statusDescription || 'Unknown';
+      const status = getPlantStatus(plant);
       statusMap[status] = (statusMap[status] || 0) + 1;
     });
 
@@ -131,8 +164,8 @@ const DataVisualizations: React.FC = () => {
     ];
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const summerCap = parseFloat(plant['net-summer-capacity-mw'] || '0');
-      const winterCap = parseFloat(plant['net-winter-capacity-mw'] || '0');
+      const summerCap = getPlantCapacity(plant);
+      const winterCap = getPlantWinterCapacity(plant);
 
       seasonData[0].capacity += summerCap;
       seasonData[0].plants += 1;
@@ -149,10 +182,10 @@ const DataVisualizations: React.FC = () => {
   // Power reliability scoring (composite score for data center suitability)
   const reliabilityScoringData = useMemo(() => {
     const scoredPlants = eiaData.map((plant: EIAPlantData) => {
-      const summerCap = parseFloat(plant['net-summer-capacity-mw'] || '0');
-      const winterCap = parseFloat(plant['net-winter-capacity-mw'] || '0');
-      const status = plant.statusDescription || 'Unknown';
-      const technology = plant.technology || 'Unknown';
+      const summerCap = getPlantCapacity(plant);
+      const winterCap = getPlantWinterCapacity(plant);
+      const status = getPlantStatus(plant);
+      const technology = getPlantTechnology(plant);
 
       // Base score starts at 50
       let score = 50;
@@ -177,8 +210,8 @@ const DataVisualizations: React.FC = () => {
       else if (summerCap < 50) score -= 5;
 
       return {
-        plantName: plant.plantName || 'Unknown',
-        state: plant.stateName || 'Unknown',
+        plantName: getPlantName(plant),
+        state: getPlantState(plant),
         technology: technology.length > 12 ? technology.substring(0, 12) + '...' : technology,
         capacity: Math.round(summerCap),
         score: Math.max(0, Math.min(100, Math.round(score))),
@@ -200,17 +233,17 @@ const DataVisualizations: React.FC = () => {
 
     const plantsWithExcess = eiaData
       .filter((plant: EIAPlantData) => {
-        const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+        const capacity = getPlantCapacity(plant);
         return capacity > 100; // Only consider larger plants
       })
       .map((plant: EIAPlantData) => {
-        const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+        const capacity = getPlantCapacity(plant);
         const utilized = capacity * utilizationRate;
         const excess = capacity - utilized;
 
         return {
-          plantName: plant.plantName || 'Unknown',
-          state: plant.stateName || 'Unknown',
+          plantName: getPlantName(plant),
+          state: getPlantState(plant),
           totalCapacity: Math.round(capacity),
           excessCapacity: Math.round(excess),
           excessPercentage: Math.round((excess / capacity) * 100)
@@ -228,8 +261,8 @@ const DataVisualizations: React.FC = () => {
     const techStats: Record<string, { totalCapacity: number, count: number, avgCapacity: number }> = {};
 
     eiaData.forEach((plant: EIAPlantData) => {
-      const tech = plant.technology || 'Unknown';
-      const capacity = parseFloat(plant['net-summer-capacity-mw'] || '0');
+      const tech = getPlantTechnology(plant);
+      const capacity = getPlantCapacity(plant);
 
       if (!techStats[tech]) {
         techStats[tech] = { totalCapacity: 0, count: 0, avgCapacity: 0 };

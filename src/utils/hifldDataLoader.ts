@@ -1,6 +1,7 @@
 import type { TransmissionLine } from '../models/TransmissionLine';
 import { HifldCache } from './cache';
 import { indexedDbCache } from './indexedDbCache';
+import { authenticatedFetch } from './auth';
 
 interface GeoJsonFeature {
   type: string;
@@ -69,14 +70,14 @@ async function fetchHifldData(
       const progress = Math.min(95, (pageCount / maxPages) * 90); // Use 0-90% for fetching
       onProgress(progress, `Fetching page ${pageCount}/${maxPages}...`, allFeatures.length);
     }
-    const params = new URLSearchParams({
-      where: '1=1', // Get all features
-      outFields: '*', // Get all fields
-      outSR: '4326', // WGS84 coordinate system
-      f: 'geojson',
-      resultOffset: offset.toString(),
-      resultRecordCount: pageSize.toString(),
-    });
+      const params = new URLSearchParams({
+        where: '1=1', // Get all features
+        outFields: 'VOLTAGE,VOLT_CLASS,OWNER,STATUS,TYPE,SUB_1,SUB_2,ID,OBJECTID',
+        outSR: '4326', // WGS84 coordinate system
+        f: 'geojson',
+        resultOffset: offset.toString(),
+        resultRecordCount: pageSize.toString(),
+      });
 
     // Build URL - check if we're using proxy or direct
     const url = `${HIFLD_BASE_URL}?${params.toString()}`;
@@ -87,7 +88,7 @@ async function fetchHifldData(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout per request
       
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
@@ -355,7 +356,7 @@ async function loadHifldFromS3(
     }
     
     console.log('🔄 Fetching HIFLD data from S3 via API proxy...');
-    const response = await fetch(HIFLD_S3_API_URL, {
+    const response = await authenticatedFetch(HIFLD_S3_API_URL, {
       headers: {
         'Accept': 'application/json',
       }
@@ -557,4 +558,3 @@ export async function getHifldCacheStats() {
     return { cached: false, count: 0, source: null };
   }
 }
-
