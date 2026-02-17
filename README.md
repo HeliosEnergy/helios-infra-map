@@ -1,10 +1,10 @@
-# Interactive Infrastructure Map of Canada
+# Interactive Infrastructure Map of North America
 
-This project is an interactive infrastructure map of Canada that displays power plants and telecommunications infrastructure. It uses React with TypeScript, Vite as the build tool, Tailwind CSS v4 for styling, and Deck.gl with Mapbox for visualization.
+This project is an interactive infrastructure map of North America that displays power plants and telecommunications infrastructure. It uses React with TypeScript, Vite as the build tool, Tailwind CSS v4 for styling, and Deck.gl with Mapbox for visualization.
 
 ## Features
 
-- Full-screen map centered on Canada
+- Full-screen map centered on North America, specifically USA.
 - Power plants rendered as dots using `ScatterplotLayer`, sized by capacity and colored by energy source
 - Submarine and terrestrial links rendered as lines using `PathLayer`
 - Layer controls to toggle visibility of data types
@@ -31,10 +31,12 @@ This project is an interactive infrastructure map of Canada that displays power 
    ```
 
 2. Set up environment variables:
-   Create a `.env` file in the root directory with your Mapbox token:
+   Create a `.env` file in the root directory with your Mapbox token and (optionally) the password(s) required to unlock the app:
    ```
    VITE_MAPBOX_TOKEN=your_mapbox_access_token_here
+   VITE_APP_PASSWORD=choose_a_password
    ```
+   For multiple allowed passwords, use a comma-separated list (e.g. `VITE_APP_PASSWORD=password1,password2`). If `VITE_APP_PASSWORD` is omitted the app loads without the password wall.
 
 3. Start the development server:
    ```bash
