@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import TabNavigation, { type TabItem } from './TabNavigation';
 import LayersFiltersTab from './LayersFiltersTab';
 import LegendTab from './LegendTab';
@@ -7,7 +7,6 @@ import DataVisualizations from './DataVisualizations';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import type { PowerPlant } from '../models/PowerPlant';
 import { getCableCacheStats, clearCableCache } from '../utils/wfsDataLoader';
-import { getHifldCacheStats, clearHifldCache } from '../utils/hifldDataLoader';
 import './SidePanel.css';
 
 interface SidePanelProps {
@@ -170,14 +169,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onToggleCollapsed,
 }) => {
   const [activeTab, setActiveTab] = useState<'layers' | 'legend' | 'visualization' | 'data'>('layers');
-  const [hifldCacheStats, setHifldCacheStats] = useState<{ cached: boolean; count: number; source?: string | null }>({ cached: false, count: 0 });
-  
-  // Load HIFLD cache stats
-  useEffect(() => {
-    getHifldCacheStats().then(setHifldCacheStats).catch(() => {
-      setHifldCacheStats({ cached: false, count: 0 });
-    });
-  }, []);
 
   // Define tabs
   const tabs: TabItem[] = useMemo(() => [
@@ -316,20 +307,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
                   Clear EIA Cache
                 </button>
                 <button
-                  onClick={async () => {
-                    await clearHifldCache();
-                    window.location.reload(); // Reload to fetch fresh HIFLD data
-                  }}
+                  onClick={() => window.location.reload()}
                   className="clear-cache-btn"
                   style={{ marginTop: '8px' }}
                 >
-                  Clear HIFLD Cache {hifldCacheStats.cached && `(${hifldCacheStats.count} lines)`}
+                  Refresh View
                 </button>
-                {hifldCacheStats.cached && hifldCacheStats.count < 5000 && (
-                  <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#dc3545' }}>
-                    ⚠️ HIFLD cache appears incomplete. Clear cache to reload full dataset.
-                  </p>
-                )}
               </div>
             </div>
           </div>

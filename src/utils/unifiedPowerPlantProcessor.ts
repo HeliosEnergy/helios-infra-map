@@ -1,10 +1,12 @@
 import type { PowerPlant } from '../models/PowerPlant';
 import { authenticatedFetch } from './auth';
+import type { PowerPlantPage } from '../types/powerPlantApi';
 
 // Function to load and process power plants: Canada from CSV, US from EIA JSON, Global DB for Kazakhstan
-export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
+export async function loadAndProcessAllPowerPlants(queryString?: string): Promise<PowerPlant[]> {
   try {
-    const response = await authenticatedFetch('/api/power-plants', {
+    const endpoint = queryString ? `/api/power-plants?${queryString}` : '/api/power-plants';
+    const response = await authenticatedFetch(endpoint, {
       headers: {
         Accept: 'application/json',
       },
@@ -14,12 +16,17 @@ export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
       throw new Error(`Failed to load power plants: ${response.status} ${response.statusText}`);
     }
 
-    const payload = await response.json();
-    if (!Array.isArray(payload)) {
+    const payload = (await response.json()) as PowerPlant[] | PowerPlantPage;
+
+    if (Array.isArray(payload)) {
+      return payload as PowerPlant[];
+    }
+
+    if (!payload || !Array.isArray(payload.data)) {
       throw new Error('Invalid power plant payload from API');
     }
 
-    return payload as PowerPlant[];
+    return payload.data;
   } catch (error) {
     console.error('Error loading power plant data:', error);
     return [];

@@ -1,6 +1,5 @@
 import LZString from 'lz-string';
 import type { Cable } from '../models/Cable';
-import type { TransmissionLine } from '../models/TransmissionLine';
 
 export interface CacheMetadata {
   timestamp: number;
@@ -323,35 +322,6 @@ export class CacheManager {
     return { entries, totalSize, usagePercent };
   }
 }
-
-/**
- * Specialized cache functions for HIFLD transmission line data
- */
-export const HifldCache = {
-  CACHE_KEY: 'hifld-transmission-lines',
-  CACHE_VERSION: 'v3', // Incremented to force cache refresh for complete geographic coverage
-  MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
-
-  get(): TransmissionLine[] | null {
-    const entry = CacheManager.getCachedData(this.CACHE_KEY);
-    if (!entry) return null;
-
-    // Check if cache is still valid
-    if (!CacheManager.isCacheValid(entry, this.MAX_AGE_MS)) {
-      return null;
-    }
-
-    return CacheManager.getDecompressedData<TransmissionLine[]>(this.CACHE_KEY);
-  },
-
-  set(data: TransmissionLine[]): boolean {
-    return CacheManager.setCachedData(this.CACHE_KEY, data, this.CACHE_VERSION);
-  },
-
-  clear(): void {
-    CacheManager.clearCache(this.CACHE_KEY);
-  }
-};
 
 /**
  * Specialized cache functions for cable data

@@ -9,6 +9,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
+    "tiles:build:fiber": "./scripts/tiles/build-fiber-tiles.sh",
+    "tiles:build:hifld": "./scripts/tiles/build-hifld-tiles.sh",
+    "tiles:build": "./scripts/tiles/build-all.sh",
+    "tiles:publish": "./scripts/tiles/publish-tiles.sh",
     "prepare": "husky"
   },
   "dependencies": {

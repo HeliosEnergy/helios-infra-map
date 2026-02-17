@@ -5,9 +5,13 @@ import { requireAuth } from './_lib/auth.js';
 import { applyCors, handleCorsPreflight } from './_lib/cors.js';
 import { applyRateLimit } from './_lib/rateLimit.js';
 
-// Simple in-memory cache per bbox (keyed by bbox string)
+// Response cache per bbox+zoom (keyed by bbox string)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+// Raw S3 tile cache — avoids re-downloading 50-400 MB tiles on every request
+const tileCache = new Map<string, { data: { type: string; features: any[] }; timestamp: number }>();
+const TILE_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const RATE_LIMIT = {
   key: 'fiber-bbox',
   maxRequests: 30,
@@ -134,6 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const maxLon = parseFloat(req.query.maxLon as string);
   const maxLat = parseFloat(req.query.maxLat as string);
   const overview = req.query.overview === '1' || req.query.overview === 'true';
+  const zoom = parseInt(req.query.zoom as string, 10) || 0;
 
   // Validate bbox
   if (
@@ -154,8 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MAX_FEATURES_OVERVIEW = 8000;
   const MAX_FEATURES_FULL = 25000; // Hard cap so response never crashes browser/laptop
 
-  // Create cache key (include overview so full and overview responses are cached separately)
-  const cacheKey = `${minLon}_${minLat}_${maxLon}_${maxLat}_${overview ? 'ov' : 'full'}`;
+  // Create cache key (include overview + zoom so different views are cached separately)
+  const cacheKey = `${minLon}_${minLat}_${maxLon}_${maxLat}_z${zoom}_${overview ? 'ov' : 'full'}`;
   const now = Date.now();
 
   // Check cache
@@ -246,36 +251,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn(`Requested ${tiles.length} tiles, limiting to ${MAX_TILES} for performance. Consider zooming in or using smaller tile size.`);
     }
 
-    // In dev, read tiles from disk (vercel dev doesn't serve /fiber-tiles to server-side requests)
-    const tilePromises = tilesToFetch.map((tile) => {
-      if (isDev) {
+    // Prefer S3 when configured; only fall back to disk reads in dev when no S3 URL is set
+    const useLocalDisk = isDev && !process.env.FIBER_TILES_S3_URL;
+
+    const fetchTile = async (tile: { minLon: number; minLat: number }): Promise<{ type: string; features: any[] }> => {
+      if (useLocalDisk) {
         return readTileFromDisk(tile.minLon, tile.minLat);
       }
-      // Production: fetch from S3 or CDN
+
+      // Check tile-level cache first (avoids re-downloading 50-400 MB files)
+      const tileCacheKey = `${tile.minLon}_${tile.minLat}`;
+      const cachedTile = tileCache.get(tileCacheKey);
+      if (cachedTile && Date.now() - cachedTile.timestamp < TILE_CACHE_TTL) {
+        return cachedTile.data;
+      }
+
       const tileUrl = getTileUrl(tile.minLon, tile.minLat, baseUrl);
-      const FETCH_TIMEOUT = 30000; // 30 seconds per tile
+      const FETCH_TIMEOUT = 60000; // 60 seconds for large tiles
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('Fetch timeout')), FETCH_TIMEOUT);
       });
-      return Promise.race([
-        fetch(tileUrl, { headers: { Accept: 'application/json' } })
-          .then((response) => {
-            if (!response.ok) {
-              if (response.status === 404) return { type: 'FeatureCollection', features: [] };
-              throw new Error(`Failed to fetch tile: ${response.statusText}`);
-            }
-            return response.json();
-          }),
-        timeoutPromise,
-      ]).catch((error) => {
+
+      try {
+        const result = await Promise.race([
+          fetch(tileUrl, { headers: { Accept: 'application/json' } })
+            .then((response) => {
+              if (!response.ok) {
+                if (response.status === 404) return { type: 'FeatureCollection', features: [] };
+                throw new Error(`Failed to fetch tile: ${response.statusText}`);
+              }
+              return response.json() as Promise<{ type: string; features: any[] }>;
+            }),
+          timeoutPromise,
+        ]);
+
+        // Cache the raw tile data so subsequent requests don't re-download
+        tileCache.set(tileCacheKey, { data: result, timestamp: Date.now() });
+        return result;
+      } catch (error: any) {
         console.warn(`Failed to fetch tile ${tileUrl}:`, error.message);
         return { type: 'FeatureCollection', features: [] };
-      });
-    });
+      }
+    };
 
-    // Wait for all tiles to load (with progress logging in dev)
     console.log(`Fetching ${tilesToFetch.length} tiles for bbox [${minLon}, ${minLat}, ${maxLon}, ${maxLat}]`);
-    const tileData = await Promise.all(tilePromises);
+    const tileData = await Promise.all(tilesToFetch.map(fetchTile));
     console.log(`Loaded ${tileData.length} tiles`);
 
     // Merge all features from all tiles (use loop to avoid stack overflow with 100k+ features)
@@ -286,79 +306,78 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Cap features so we never send a response that can crash the client
-    let featuresToReturn = allFeatures;
-    if (overview && allFeatures.length > MAX_FEATURES_OVERVIEW) {
-      const step = Math.ceil(allFeatures.length / MAX_FEATURES_OVERVIEW);
-      featuresToReturn = [];
-      for (let i = 0; i < allFeatures.length; i += step) {
-        featuresToReturn.push(allFeatures[i]);
-      }
-      if (featuresToReturn.length < MAX_FEATURES_OVERVIEW && allFeatures.length > featuresToReturn.length) {
-        featuresToReturn = allFeatures.slice(0, MAX_FEATURES_OVERVIEW);
-      }
-    } else if (!overview && allFeatures.length > MAX_FEATURES_FULL) {
-      // Full mode: hard cap to prevent memory crashes (take first N; tiles are already center-sorted)
-      featuresToReturn = allFeatures.slice(0, MAX_FEATURES_FULL);
-    }
+    // ── Always filter features to the requested bbox ──
+    // Fast check: only look at the first coordinate of each LineString to decide
+    // inclusion. This is O(1) per feature instead of iterating all vertices.
+    // For lines that span the bbox boundary this can miss or include a few extras,
+    // but it's accurate enough and extremely fast even for 100k+ features.
+    const filteredFeatures: any[] = [];
+    for (const feature of allFeatures) {
+      const geom = feature?.geometry;
+      if (!geom || !geom.coordinates) continue;
 
-    // For performance with large datasets, skip precise filtering if we have too many features
-    // The tiles are already clipped to the bbox area, so most features should be relevant
-    let filteredFeatures = featuresToReturn;
-    
-    // Only do precise filtering if we have a reasonable number of features
-    if (featuresToReturn.length < 10000) {
-      // Filter features to only include those that intersect the bbox
-      // (tiles might have some overlap, so we filter precisely)
-      filteredFeatures = featuresToReturn.filter((feature) => {
-        if (!feature.geometry || !feature.geometry.coordinates) return false;
+      const coords = geom.coordinates;
 
-        const coords = feature.geometry.coordinates;
-        let featureMinLon = Infinity;
-        let featureMaxLon = -Infinity;
-        let featureMinLat = Infinity;
-        let featureMaxLat = -Infinity;
-
-        // Extract bbox from feature coordinates (iterative to avoid stack overflow)
-        // Use iterative approach instead of recursion for large features
-        const coordStack: any[] = [coords];
-        const MAX_DEPTH = 10; // Safety limit
-        let depth = 0;
-        
-        while (coordStack.length > 0 && depth < MAX_DEPTH) {
-          const current = coordStack.pop();
-          depth++;
-          
-          if (!Array.isArray(current) || current.length === 0) continue;
-          
-          // Check if it's a coordinate pair [lon, lat]
-          if (typeof current[0] === 'number' && typeof current[1] === 'number' && current.length >= 2) {
-            const [lon, lat] = current;
-            featureMinLon = Math.min(featureMinLon, lon);
-            featureMaxLon = Math.max(featureMaxLon, lon);
-            featureMinLat = Math.min(featureMinLat, lat);
-            featureMaxLat = Math.max(featureMaxLat, lat);
-          } else if (Array.isArray(current[0])) {
-            // Nested array - add all items to stack
-            for (let i = current.length - 1; i >= 0; i--) {
-              coordStack.push(current[i]);
+      if (geom.type === 'LineString' && Array.isArray(coords[0])) {
+        // Check first and last coordinate — if either is in bbox, include it
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (typeof first[0] === 'number') {
+          const fIn = first[0] >= minLon && first[0] <= maxLon && first[1] >= minLat && first[1] <= maxLat;
+          const lIn = last[0] >= minLon && last[0] <= maxLon && last[1] >= minLat && last[1] <= maxLat;
+          if (fIn || lIn) {
+            filteredFeatures.push(feature);
+            continue;
+          }
+          // Also sample a midpoint for long lines that cross through the bbox
+          if (coords.length > 2) {
+            const mid = coords[Math.floor(coords.length / 2)];
+            if (typeof mid[0] === 'number' && mid[0] >= minLon && mid[0] <= maxLon && mid[1] >= minLat && mid[1] <= maxLat) {
+              filteredFeatures.push(feature);
+              continue;
             }
           }
         }
-
-        // Check if feature bbox intersects request bbox
-        return (
-          featureMaxLon >= minLon &&
-          featureMinLon <= maxLon &&
-          featureMaxLat >= minLat &&
-          featureMinLat <= maxLat
-        );
-      });
-    } else {
-      console.log(`Skipping precise bbox filtering for ${featuresToReturn.length} features (performance optimization)`);
+      } else if (geom.type === 'MultiLineString' && Array.isArray(coords[0])) {
+        // Check first line's first coordinate
+        const line = coords[0];
+        if (Array.isArray(line) && line.length > 0 && Array.isArray(line[0])) {
+          const pt = line[0];
+          if (typeof pt[0] === 'number' && pt[0] >= minLon && pt[0] <= maxLon && pt[1] >= minLat && pt[1] <= maxLat) {
+            filteredFeatures.push(feature);
+            continue;
+          }
+        }
+      }
     }
 
-    const sanitizedFeatures = filteredFeatures.map(sanitizeFeature);
+    console.log(`Bbox filtered: ${allFeatures.length} → ${filteredFeatures.length} features`);
+
+    // ── Cap features based on mode / zoom ──
+    // Zoom-aware caps: at high zoom the viewport is small so fewer features suffice
+    let maxFeatures: number;
+    if (overview) {
+      maxFeatures = MAX_FEATURES_OVERVIEW;
+    } else if (zoom >= 10) {
+      maxFeatures = 5000;
+    } else if (zoom >= 8) {
+      maxFeatures = 10000;
+    } else {
+      maxFeatures = MAX_FEATURES_FULL;
+    }
+
+    let featuresToReturn = filteredFeatures;
+    if (filteredFeatures.length > maxFeatures) {
+      // Sample evenly to preserve geographic distribution
+      const step = Math.ceil(filteredFeatures.length / maxFeatures);
+      featuresToReturn = [];
+      for (let i = 0; i < filteredFeatures.length && featuresToReturn.length < maxFeatures; i += step) {
+        featuresToReturn.push(filteredFeatures[i]);
+      }
+      console.log(`Capped features: ${filteredFeatures.length} → ${featuresToReturn.length} (max ${maxFeatures} for zoom ${zoom})`);
+    }
+
+    const sanitizedFeatures = featuresToReturn.map(sanitizeFeature);
 
     // Create merged GeoJSON response
     const mergedGeoJson = {

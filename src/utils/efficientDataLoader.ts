@@ -2,6 +2,7 @@ import { CacheManager } from './cache';
 import { globalProgressIndicator } from './progressIndicator';
 import type { PowerPlant } from '../models/PowerPlant';
 import { authenticatedFetch } from './auth';
+import type { PowerPlantPage } from '../types/powerPlantApi';
 
 // Constants for caching
 const EIA_DATA_CACHE_KEY = 'eia-power-plants-v1';
@@ -44,8 +45,11 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
 
     // Parse the already processed data
     globalProgressIndicator.update(50, 'Processing EIA data...');
-    const rawData = await response.json();
-    
+    const payload = (await response.json()) as unknown;
+    const rawData: unknown[] = Array.isArray(payload)
+      ? payload
+      : (payload as PowerPlantPage)?.data ?? [];
+
     // Add check for data integrity
     if (!Array.isArray(rawData)) {
       throw new Error('Invalid data format received from API');
@@ -54,7 +58,13 @@ export async function loadEIADataEfficiently(): Promise<PowerPlant[]> {
     console.log(`Received ${rawData.length} plants from API`);
     
     // API now returns pre-processed PowerPlant[]; keep legacy transform path for compatibility.
-    const plants = rawData.length > 0 && rawData[0]?.coordinates && rawData[0]?.output !== undefined
+    const firstItem = rawData[0] as Partial<PowerPlant> | undefined;
+    const isPowerPlantPayload =
+      !!firstItem &&
+      Array.isArray(firstItem.coordinates) &&
+      typeof firstItem.output === 'number';
+
+    const plants = isPowerPlantPayload
       ? (rawData as PowerPlant[])
       : transformEIADataToPowerPlants(rawData);
     

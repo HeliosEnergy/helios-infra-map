@@ -51,7 +51,15 @@ describe('unifiedPowerPlantProcessor', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: () => Promise.resolve(mockPlants),
+        json: () => Promise.resolve({
+          data: mockPlants,
+          page: {
+            limit: 5000,
+            offset: 0,
+            total: mockPlants.length,
+            hasMore: false,
+          },
+        }),
       });
 
       const result = await loadAndProcessAllPowerPlants();
