@@ -26,7 +26,7 @@ import SidePanel from './components/SidePanel';
 import ProximityDialog from './components/ProximityDialog';
 import AddressSearch from './components/AddressSearch';
 import LocationStatsPanel from './components/LocationStatsPanel';
-import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
+import { Search, MapPin, X, AlertTriangle, ExternalLink } from 'lucide-react';
 
 // SizeByOption type as per MAP_FEATURES_DOCUMENTATION.md
 type SizeByOption = 'nameplate_capacity' | 'capacity_factor' | 'generation';
@@ -284,6 +284,10 @@ function App() {
   // State for nearby fiber cables for selected power plant (with distance)
   const [nearbyFiberCables, setNearbyFiberCables] = useState<Array<FiberCable & { distance: number }>>([]);
   const [isCalculatingNearbyFiber, setIsCalculatingNearbyFiber] = useState<boolean>(false);
+  // Distance measurement state (two arbitrary points on the map)
+  const [isMeasuringDistance, setIsMeasuringDistance] = useState<boolean>(false);
+  const [distancePoints, setDistancePoints] = useState<[number, number][]>([]);
+  const [measuredDistanceMiles, setMeasuredDistanceMiles] = useState<number | null>(null);
   // Ref for hover timeout to delay tooltip hiding
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fiberHoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1049,6 +1053,16 @@ function App() {
           getPolygon: [locationCircle],
         },
       }),
+      // Distance measurement line (between two arbitrary points)
+      isMeasuringDistance && distancePoints.length === 2 && new PathLayer({
+        id: 'distance-measurement-line',
+        data: [{ path: distancePoints }],
+        getPath: (d: { path: [number, number][] }) => d.path,
+        getColor: [255, 255, 0, 255], // Yellow line
+        getWidth: 4,
+        widthMinPixels: 2,
+        pickable: false,
+      }),
       // Location pin marker (always visible when location is selected)
       // Rendered after circle but before other layers so it's visible on top
       selectedLocation && new IconLayer({
@@ -1271,6 +1285,8 @@ function App() {
     selectedLocation,
     locationCircle,
     showRadiusCircle,
+    isMeasuringDistance,
+    distancePoints,
   ]);
 
   return (
@@ -1394,6 +1410,27 @@ function App() {
             poolSize: 0 // Disable pooling for large datasets
           }}
           onClick={(info, event) => {
+            // Distance measurement: allow user to click any two points and compute distance
+            if (isMeasuringDistance && info.coordinate) {
+              const coord = info.coordinate as [number, number]; // [lon, lat]
+              setDistancePoints(prev => {
+                if (prev.length === 0) {
+                  // First point
+                  return [coord];
+                }
+                if (prev.length === 1) {
+                  // Second point -> compute distance
+                  const first = prev[0];
+                  const second = coord;
+                  const miles = calculateDistance(first, second);
+                  setMeasuredDistanceMiles(miles);
+                  return [first, second];
+                }
+                // Already have two points: start a new measurement
+                return [coord];
+              });
+            }
+
             if (info.object && info.layer?.id === 'power-plants') {
               event.stopPropagation();
               setHoverInfo(info.object);
@@ -1516,6 +1553,19 @@ function App() {
         onPlantSelect={handlePlantSelect}
         onPlantDeselect={handlePlantDeselect}
         onApplySelection={handleApplySelection}
+        // Distance measurement controls
+        isMeasuringDistance={isMeasuringDistance}
+        measuredDistanceMiles={measuredDistanceMiles}
+        onStartDistanceMeasurement={() => {
+          setIsMeasuringDistance(true);
+          setDistancePoints([]);
+          setMeasuredDistanceMiles(null);
+        }}
+        onClearDistanceMeasurement={() => {
+          setIsMeasuringDistance(false);
+          setDistancePoints([]);
+          setMeasuredDistanceMiles(null);
+        }}
       />
 
        {/* Proximity Dialog */}
@@ -1556,8 +1606,15 @@ function App() {
                if (plant.country === 'US') {
                  const availableCapacity = plant.output;
                  const usedCapacity = plant.usedCapacity || 0;
-                 const excessCapacity = availableCapacity - usedCapacity;
+                 // Use excess capacity from rawData if available (from new CSV), otherwise calculate
+                 const excessCapacityFromData = plant.rawData?.['Excess Capacity (MW)'] 
+                   ? parseFloat(plant.rawData['Excess Capacity (MW)']) 
+                   : null;
+                 const excessCapacity = excessCapacityFromData !== null 
+                   ? excessCapacityFromData 
+                   : availableCapacity - usedCapacity;
                  const capacityFactor = availableCapacity > 0 ? (usedCapacity / availableCapacity) * 100 : 0;
+                 const plantUrl = plant.rawData?.['Plant URL'];
                  
                  return (
                    <>
@@ -1568,6 +1625,19 @@ function App() {
                      <p>Excess Capacity: {excessCapacity.toFixed(1)} MW</p>
                      <p>Capacity Factor: {capacityFactor.toFixed(1)}%</p>
                      <p>Coordinates: {plant.coordinates[1].toFixed(4)}, {plant.coordinates[0].toFixed(4)}</p>
+                     
+                     {/* Plant URL link - only show if available from new CSV */}
+                     {plantUrl && (
+                       <div className="cta-buttons" style={{ marginTop: '12px' }}>
+                         <button
+                           onClick={() => window.open(plantUrl, '_blank', 'noopener,noreferrer')}
+                           aria-label={`View ${plant.name} plant page`}
+                         >
+                           <ExternalLink size={16} />
+                           View Plant Page
+                         </button>
+                       </div>
+                     )}
 
                      {/* Nearby Fiber Cables Section - Only show when persistent and fiber cables are loaded */}
                      {isTooltipPersistent && showFiberCables && (

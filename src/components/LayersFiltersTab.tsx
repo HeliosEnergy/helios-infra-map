@@ -236,6 +236,12 @@ interface LayersFiltersTabProps {
    onProximityDistanceChange: (value: number) => void;
    proximityPlantCount: number;
    onOpenProximityDialog: () => void;
+
+  // Distance measurement
+  isMeasuringDistance: boolean;
+  measuredDistanceMiles: number | null;
+  onStartDistanceMeasurement: () => void;
+  onClearDistanceMeasurement: () => void;
 }
 
 type PowerRangePreset = 'small' | 'medium' | 'large' | 'custom';
@@ -282,6 +288,10 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onProximityDistanceChange,
   proximityPlantCount,
   onOpenProximityDialog,
+  isMeasuringDistance,
+  measuredDistanceMiles,
+  onStartDistanceMeasurement,
+  onClearDistanceMeasurement,
 }) => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<PowerRangePreset>>(new Set());
@@ -456,6 +466,30 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             <span className="toggle-label">Infrastructure</span>
           </label>
         </div>
+      </section>
+
+      {/* Distance Measurement Section */}
+      <section className="tab-section">
+        <h3 className="section-title">Distance Tool</h3>
+        <div className="control-group">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={isMeasuringDistance ? onClearDistanceMeasurement : onStartDistanceMeasurement}
+          >
+            {isMeasuringDistance ? 'Cancel Distance Check' : 'Check Distance'}
+          </button>
+        </div>
+        {isMeasuringDistance && (
+          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '8px' }}>
+            Click two points on the map to measure the distance between them.
+          </p>
+        )}
+        {measuredDistanceMiles != null && (
+          <p style={{ fontSize: '0.9rem', fontWeight: 500, marginTop: '8px' }}>
+            Distance: {measuredDistanceMiles.toFixed(2)} miles ({(measuredDistanceMiles * 1.60934).toFixed(2)} km)
+          </p>
+        )}
       </section>
 
       {/* Quick Filters Section */}
