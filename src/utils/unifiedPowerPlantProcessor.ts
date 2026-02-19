@@ -1,6 +1,121 @@
 import type { PowerPlant } from '../models/PowerPlant';
 
-// Function to load and process power plants: Canada from CSV, US from EIA JSON, Global DB for Kazakhstan
+// Function to parse new EIA US plants CSV (eia-plants-export-2026-02-18 09_46_12.csv)
+export function parseNewEIAUSPlantsCSV(csvText: string): PowerPlant[] {
+  const lines = csvText.split('\n');
+  if (lines.length < 2) return [];
+  
+  const headers = parseCsvRow(lines[0]);
+  const plants: PowerPlant[] = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const row = parseCsvRow(line);
+    if (row.length < headers.length) continue;
+    
+    // Create a map of header to value
+    const entry: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      entry[header] = row[index] ? row[index].trim().replace(/^"|"$/g, '') : '';
+    });
+    
+    // Extract coordinates
+    const latitude = parseFloat(entry['Plant Latitude'] || '0');
+    const longitude = parseFloat(entry['Plant Longitude'] || '0');
+    
+    // Extract capacity (Operating Total Nameplate Capacity)
+    const nameplateCapacityStr = entry['Operating Total Nameplate Capacity'] || '0';
+    const nameplateCapacity = parseFloat(nameplateCapacityStr.replace(/,/g, '')) || 0;
+    
+    // Extract Annual Generation (in GWh or MWh from formatted string)
+    const annualGenerationFormatted = entry['Annual Generation (Formatted)'] || '';
+    let annualGenerationMWh = 0;
+    if (annualGenerationFormatted) {
+      // Parse formatted string like "474.13 GWh" or "811.00 MWh"
+      const match = annualGenerationFormatted.match(/([\d.]+)\s*(GWh|MWh)/i);
+      if (match) {
+        const value = parseFloat(match[1]);
+        const unit = match[2].toUpperCase();
+        // Convert to MWh for consistent calculation
+        annualGenerationMWh = unit === 'GWH' ? value * 1000 : value;
+      }
+    }
+    // Fallback to numeric column if formatted string parsing fails
+    if (annualGenerationMWh === 0) {
+      const annualGenNum = parseFloat(entry['Annual Generation'] || '0');
+      // The numeric column appears to be in MWh (474134 MWh = 474.13 GWh)
+      annualGenerationMWh = annualGenNum;
+    }
+    
+    // Convert Annual Generation from MWh to average MW equivalent (for excess capacity calculation)
+    // Annual Generation (MWh) / 8760 hours per year = average MW output over the year
+    const annualGenerationMW = annualGenerationMWh / 8760; // Convert MWh to average MW
+    
+    // Calculate excess capacity: Nameplate Capacity - Annual Generation (as average MW)
+    const excessCapacity = nameplateCapacity - annualGenerationMW;
+    
+    // Skip if invalid coordinates or no capacity
+    if (isNaN(latitude) || isNaN(longitude) || nameplateCapacity <= 0) {
+      continue;
+    }
+    
+    // Map Fuel Types to energy source
+    const fuelTypes = entry['Fuel Types'] || '';
+    const source = mapEnergySourceFromFuelTypes(fuelTypes);
+    
+    const plant: PowerPlant = {
+      id: `us-eia-${entry['Plant Code'] || i}`,
+      name: entry['Plant Name'] || 'Unknown Plant',
+      output: nameplateCapacity,
+      outputDisplay: `${nameplateCapacity.toFixed(1)} MW`,
+      source: source,
+      coordinates: [longitude, latitude],
+      country: 'US',
+      usedCapacity: annualGenerationMW > 0 ? annualGenerationMW : undefined,
+      capacityFactor: nameplateCapacity > 0 && annualGenerationMW > 0 
+        ? (annualGenerationMW / nameplateCapacity) * 100 
+        : null,
+      rawData: {
+        ...entry,
+        'Plant URL': entry['Plant URL'] || '', // Store Plant URL for link
+        'Excess Capacity (MW)': excessCapacity.toFixed(2),
+        'Annual Generation (MWh)': annualGenerationMWh.toFixed(2),
+      }
+    };
+    
+    plants.push(plant);
+  }
+  
+  console.log(`Parsed ${plants.length} US plants from new EIA CSV`);
+  return plants;
+}
+
+// Helper to map Fuel Types column to energy source
+function mapEnergySourceFromFuelTypes(fuelTypes: string): string {
+  if (!fuelTypes) return 'other';
+  
+  const normalized = fuelTypes.toLowerCase();
+  
+  // Check for common fuel types
+  if (normalized.includes('natural gas') || normalized.includes('gas')) return 'gas';
+  if (normalized.includes('coal')) return 'coal';
+  if (normalized.includes('nuclear')) return 'nuclear';
+  if (normalized.includes('water') || normalized.includes('hydro')) return 'hydro';
+  if (normalized.includes('wind')) return 'wind';
+  if (normalized.includes('solar') || normalized.includes('photovoltaic')) return 'solar';
+  if (normalized.includes('oil') || normalized.includes('petroleum')) return 'oil';
+  if (normalized.includes('biomass') || normalized.includes('biofuel')) return 'biomass';
+  if (normalized.includes('geothermal')) return 'geothermal';
+  if (normalized.includes('battery')) return 'battery';
+  if (normalized.includes('diesel')) return 'diesel';
+  if (normalized.includes('waste')) return 'waste';
+  
+  return 'other';
+}
+
+// Function to load and process power plants: Canada from CSV, US from new EIA CSV, Global DB for other countries
 export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
   try {
     console.log('Starting data loading...');
@@ -95,17 +210,44 @@ export async function loadAndProcessAllPowerPlants(): Promise<PowerPlant[]> {
       }
     }
 
-    // Use global database for all countries EXCEPT CA (CA from CSVs, US now from global database)
+    // Use global database for all countries EXCEPT CA and US (CA from CSVs, US from new EIA CSV)
     if (Array.isArray(globalKazakhstanPlants) && globalKazakhstanPlants.length > 0) {
-      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'CA');
+      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'CA' && p.country !== 'US');
     }
 
-    // Extract US plants from global database
-    const usPlants = globalKazakhstanPlants.filter(p => p.country === 'US');
-    console.log('US plants loaded from global database:', usPlants.length);
-    
-    // Remove US plants from globalKazakhstanPlants array (they're now in usPlants)
-    globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US');
+    // Load US plants from new EIA CSV file
+    let usPlants: PowerPlant[] = [];
+    try {
+      console.log('Loading US plants from new EIA CSV...');
+      // Prefer server-side fetch from S3 via API (avoids CORS and doesn't expose S3 URL)
+      let usPlantsText: string | null = null;
+      const apiResponse = await fetch('/api/us-power-plants-csv');
+      if (apiResponse.ok) {
+        usPlantsText = await apiResponse.text();
+      } else {
+        console.warn('US plants CSV API not available, trying local public file...');
+        // Fallback to local public file (dev / local builds)
+        const csvFileName = 'eia-plants-export-2026-02-18 09_46_12.csv';
+        const localResponse = await fetch(`/data/${encodeURIComponent(csvFileName)}`);
+        if (localResponse.ok) {
+          usPlantsText = await localResponse.text();
+        }
+      }
+
+      if (usPlantsText) {
+        usPlants = parseNewEIAUSPlantsCSV(usPlantsText);
+        console.log('US plants loaded from new EIA CSV:', usPlants.length);
+      } else {
+        console.warn('Failed to load new EIA CSV, falling back to global database for US');
+        usPlants = globalKazakhstanPlants.filter(p => p.country === 'US');
+        globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US');
+      }
+    } catch (error) {
+      console.warn('Error loading new EIA CSV, falling back to global database for US:', error);
+      // Fallback: extract US plants from global database if CSV fails
+      usPlants = globalKazakhstanPlants.filter(p => p.country === 'US');
+      globalKazakhstanPlants = globalKazakhstanPlants.filter(p => p.country !== 'US');
+    }
 
     // Combine and aggregate plants (ensure all arrays are defined)
     const allPlants = [

@@ -90,6 +90,12 @@ interface SidePanelProps {
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
   onApplySelection: () => void;
+
+  // Distance measurement
+  isMeasuringDistance: boolean;
+  measuredDistanceMiles: number | null;
+  onStartDistanceMeasurement: () => void;
+  onClearDistanceMeasurement: () => void;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -164,6 +170,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onPlantSelect,
   onPlantDeselect,
   onApplySelection,
+
+  // Distance measurement
+  isMeasuringDistance,
+  measuredDistanceMiles,
+  onStartDistanceMeasurement,
+  onClearDistanceMeasurement,
 
   // UI
   isCollapsed = false,
@@ -250,6 +262,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 onProximityDistanceChange={onProximityDistanceChange}
                 proximityPlantCount={proximityPlantCount}
                 onOpenProximityDialog={onOpenProximityDialog}
+                // Distance measurement props
+                isMeasuringDistance={isMeasuringDistance}
+                measuredDistanceMiles={measuredDistanceMiles}
+                onStartDistanceMeasurement={onStartDistanceMeasurement}
+                onClearDistanceMeasurement={onClearDistanceMeasurement}
               />
         );
 
