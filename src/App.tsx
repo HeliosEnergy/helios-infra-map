@@ -262,7 +262,7 @@ function App() {
   const [fiberCables, setFiberCables] = useState<FiberCable[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showPowerPlants, setShowPowerPlants] = useState<boolean>(true);
-  const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
+  const [showWfsCables, setShowWfsCables] = useState<boolean>(false); // Infrastructure off by default
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
   const [loadingFiberCables, setLoadingFiberCables] = useState<boolean>(false);

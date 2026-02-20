@@ -480,20 +480,25 @@
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Info Panel Container - Stacks panels vertically */
+/* Info Panel Container - Stacks panels vertically, stays within viewport (above footer) */
 .info-panel-container {
   position: absolute;
-  top: 76px;
-  left: 20px;
+  top: 70px;
+  left: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   z-index: 100;
   pointer-events: none; /* Allow clicks to pass through container */
+  /* Reserve space for header offset (70px) + footer (56px) so content isn't covered */
+  max-height: calc(100vh - 70px - 56px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .info-panel-container > * {
   pointer-events: auto; /* Re-enable clicks on panels */
+  flex-shrink: 0;
 }
 
 .info-panel {
@@ -511,6 +516,11 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
   transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
   animation: slideIn 0.25s ease-out;
+}
+
+/* When multiple panels are open (e.g. plant + fiber), cap each so both fit on screen */
+.info-panel-container .info-panel:not(:only-child) {
+  max-height: min(42vh, 420px);
 }
 
 @keyframes slideIn {
