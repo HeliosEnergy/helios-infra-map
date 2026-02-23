@@ -185,10 +185,12 @@ interface LayersFiltersTabProps {
   showWfsCables: boolean;
   showHifldLines: boolean;
   showFiberCables: boolean;
+  showFiberOverview: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
   onToggleFiberCables: () => void;
+  onToggleFiberOverview: () => void;
 
   // Country filtering
   showCanadianPlants: boolean;
@@ -254,7 +256,9 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onToggleWfsCables,
   onToggleHifldLines,
   showFiberCables,
+  showFiberOverview,
   onToggleFiberCables,
+  onToggleFiberOverview,
   showCanadianPlants: _showCanadianPlants,
   showAmericanPlants: _showAmericanPlants,
   showKazakhstanPlants: _showKazakhstanPlants,
@@ -442,6 +446,17 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             />
             <span className="toggle-slider"></span>
             <span className="toggle-label">Fiber Cables</span>
+          </label>
+
+          <label className="toggle-item">
+            <input
+              type="checkbox"
+              checked={showFiberOverview}
+              onChange={onToggleFiberOverview}
+              className="toggle-input"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-label">Overview</span>
           </label>
 
           <label className="toggle-item">
