@@ -287,10 +287,13 @@ function App() {
   // State for nearby fiber cables for selected power plant (with distance)
   const [nearbyFiberCables, setNearbyFiberCables] = useState<Array<FiberCable & { distance: number }>>([]);
   const [isCalculatingNearbyFiber, setIsCalculatingNearbyFiber] = useState<boolean>(false);
-  // Distance measurement state (two arbitrary points on the map)
+  // Distance measurement state (two points on the map; pins + line shown)
   const [isMeasuringDistance, setIsMeasuringDistance] = useState<boolean>(false);
   const [distancePoints, setDistancePoints] = useState<[number, number][]>([]);
-  const [measuredDistanceMiles, setMeasuredDistanceMiles] = useState<number | null>(null);
+  const measuredDistanceMiles = useMemo(
+    () => (distancePoints.length === 2 ? calculateDistance(distancePoints[0], distancePoints[1]) : null),
+    [distancePoints]
+  );
   // Ref for hover timeout to delay tooltip hiding
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fiberHoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -324,6 +327,34 @@ function App() {
     useEffect(() => {
       setProximityDistance(sliderValue);
     }, [sliderValue]);
+
+  // Build spatial index for proximity filtering using fiber cables
+  useEffect(() => {
+    // Prefer detailed fiber cables when available and visible
+    let sourceCables: FiberCable[] = [];
+    if (showFiberCables && fiberCables.length > 0) {
+      sourceCables = fiberCables;
+    } else if (showFiberOverview && fiberOverviewCables.length > 0) {
+      // Fallback to overview cables when zoomed out or detailed layer is off
+      sourceCables = fiberOverviewCables;
+    } else {
+      setLineIndex(null);
+      return;
+    }
+
+    // Adapt FiberCable objects to Cable-like objects for the spatial index
+    const fiberAsCables = sourceCables.map((fiber) => ({
+      id: fiber.id,
+      name: String(
+        (fiber.properties && (fiber.properties['name'] || fiber.properties['NAME'])) ??
+        fiber.id
+      ),
+      coordinates: fiber.path,
+    })) as Cable[];
+
+    const index = createLineIndex(fiberAsCables);
+    setLineIndex(index);
+  }, [fiberCables, fiberOverviewCables, showFiberCables, showFiberOverview]);
 
     // Callback for slider changes (immediate response)
     const handleSliderChange = useCallback((value: number) => {
@@ -533,10 +564,6 @@ function App() {
         // Update current filter values to fit within new range if needed
         setMinPowerOutput(prev => Math.max(calculatedRange.min, Math.min(prev, calculatedRange.max)));
         setMaxPowerOutput(prev => Math.min(calculatedRange.max, Math.max(prev, calculatedRange.min)));
-
-        // Create spatial index for submarine cables only (removed terrestrial links)
-        const index = createLineIndex(wfsCableData);
-        setLineIndex(index);
 
         // Initialize filtered sources with all unique sources from the data
         const uniqueSources = new Set(powerPlantData.map(plant => plant.source));
@@ -1092,15 +1119,39 @@ function App() {
           getPolygon: [locationCircle],
         },
       }),
-      // Distance measurement line (between two arbitrary points)
+      // Distance measurement line (between two points)
       isMeasuringDistance && distancePoints.length === 2 && new PathLayer({
         id: 'distance-measurement-line',
         data: [{ path: distancePoints }],
         getPath: (d: { path: [number, number][] }) => d.path,
-        getColor: [255, 255, 0, 255], // Yellow line
+        getColor: [255, 200, 0, 255], // Yellow/gold line
         getWidth: 4,
         widthMinPixels: 2,
         pickable: false,
+      }),
+      // Distance measurement pins (Google Maps style) at each clicked point
+      isMeasuringDistance && distancePoints.length >= 1 && new IconLayer({
+        id: 'distance-measurement-pins',
+        data: distancePoints.map((coordinates) => ({ coordinates })),
+        pickable: false,
+        iconAtlas: LOCATION_PIN_ICON.url,
+        iconMapping: {
+          marker: {
+            x: 0,
+            y: 0,
+            width: LOCATION_PIN_ICON.width,
+            height: LOCATION_PIN_ICON.height,
+            anchorY: LOCATION_PIN_ICON.anchorY,
+            mask: false,
+          },
+        },
+        getIcon: () => 'marker',
+        getPosition: (d: { coordinates: [number, number] }) => d.coordinates,
+        getSize: 32,
+        getColor: [255, 255, 255, 255],
+        sizeScale: 1,
+        sizeMinPixels: 24,
+        sizeMaxPixels: 48,
       }),
       // Location pin marker (always visible when location is selected)
       // Rendered after circle but before other layers so it's visible on top
@@ -1461,24 +1512,13 @@ function App() {
             poolSize: 0 // Disable pooling for large datasets
           }}
           onClick={(info, event) => {
-            // Distance measurement: allow user to click any two points and compute distance
+            // Distance measurement: click to place first pin, then second; line and distance update; click again to start over
             if (isMeasuringDistance && info.coordinate) {
               const coord = info.coordinate as [number, number]; // [lon, lat]
               setDistancePoints(prev => {
-                if (prev.length === 0) {
-                  // First point
-                  return [coord];
-                }
-                if (prev.length === 1) {
-                  // Second point -> compute distance
-                  const first = prev[0];
-                  const second = coord;
-                  const miles = calculateDistance(first, second);
-                  setMeasuredDistanceMiles(miles);
-                  return [first, second];
-                }
-                // Already have two points: start a new measurement
-                return [coord];
+                if (prev.length === 0) return [coord];           // First point: place pin
+                if (prev.length === 1) return [prev[0], coord]; // Second point: line + distance
+                return [coord];                                  // Third click: new measurement
               });
             }
 
@@ -1612,12 +1652,10 @@ function App() {
         onStartDistanceMeasurement={() => {
           setIsMeasuringDistance(true);
           setDistancePoints([]);
-          setMeasuredDistanceMiles(null);
         }}
         onClearDistanceMeasurement={() => {
           setIsMeasuringDistance(false);
           setDistancePoints([]);
-          setMeasuredDistanceMiles(null);
         }}
       />
 

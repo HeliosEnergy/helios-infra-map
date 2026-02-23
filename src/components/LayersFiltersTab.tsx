@@ -497,7 +497,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
         </div>
         {isMeasuringDistance && (
           <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '8px' }}>
-            Click two points on the map to measure the distance between them.
+            Click to place the first pin, then the second. A line and distance between the two points will show. Click again to start a new measurement.
           </p>
         )}
         {measuredDistanceMiles != null && (
