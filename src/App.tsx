@@ -265,7 +265,10 @@ function App() {
   const [showWfsCables, setShowWfsCables] = useState<boolean>(false); // Infrastructure off by default
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
+  const [showFiberOverview, setShowFiberOverview] = useState<boolean>(true); // Overview layer (simplified), default on
+  const [fiberOverviewCables, setFiberOverviewCables] = useState<FiberCable[]>([]);
   const [loadingFiberCables, setLoadingFiberCables] = useState<boolean>(false);
+  const [showFiberLoadingBanner, setShowFiberLoadingBanner] = useState<boolean>(false);
   const [loadingHifld, setLoadingHifld] = useState<boolean>(false);
   const [hifldLoadingMessage, setHifldLoadingMessage] = useState<string>('Loading HIFLD transmission lines...');
   const [hifldProgress, setHifldProgress] = useState<number>(0);
@@ -744,6 +747,19 @@ function App() {
     }
   }, [loadingHifld, hifldLines.length, showHifldLines]);
 
+  // Auto-hide fiber loading banner after 2 seconds
+  useEffect(() => {
+    if (showFiberCables && loadingFiberCables) {
+      setShowFiberLoadingBanner(true);
+      const timer = setTimeout(() => {
+        setShowFiberLoadingBanner(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowFiberLoadingBanner(false);
+    }
+  }, [showFiberCables, loadingFiberCables]);
+
   // Cleanup hover timeout on unmount or when tooltip becomes persistent
   useEffect(() => {
     return () => {
@@ -964,6 +980,29 @@ function App() {
     };
   }, [showFiberCables, viewState.longitude, viewState.latitude, viewState.zoom, parseFiberFeatures]);
 
+  // Load simplified fiber overview (single file) once when Overview toggle is on
+  useEffect(() => {
+    if (!showFiberOverview) {
+      setFiberOverviewCables([]);
+      return;
+    }
+    let cancelled = false;
+    fetch('/data/rextag_data_simplified.json')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`rextag_data_simplified.json ${res.status}`))))
+      .then((geojson: { features?: unknown[] }) => {
+        if (cancelled) return;
+        const features = Array.isArray(geojson?.features) ? geojson.features : [];
+        const cables = parseFiberFeatures(features, 'overview');
+        setFiberOverviewCables(cables);
+        if (cables.length > 0) console.log(`Fiber overview loaded: ${cables.length} segments`);
+      })
+      .catch((err) => {
+        if (!cancelled) console.warn('Fiber overview not available. Expected public/data/rextag_data_simplified.json.', err);
+        setFiberOverviewCables([]);
+      });
+    return () => { cancelled = true; };
+  }, [showFiberOverview, parseFiberFeatures]);
+
   // Count power plants by source
   const powerPlantCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1159,6 +1198,16 @@ function App() {
       onHover: () => {}
     }),
     // Fiber cables layer when zoomed in (viewport-based)
+    // Fiber overview (simplified) - visible when toggle on
+    showFiberOverview && fiberOverviewCables.length > 0 && new PathLayer({
+      id: 'fiber-overview',
+      data: fiberOverviewCables,
+      pickable: false,
+      getPath: (d: FiberCable) => d.path,
+      getColor: [200, 0, 200, 200],
+      getWidth: 2,
+      widthMinPixels: 2,
+    }),
     showFiberCables && viewState.zoom >= 4 && fiberCables.length > 0 && new PathLayer({
       id: 'fiber-cables',
       data: fiberCables,
@@ -1273,7 +1322,9 @@ function App() {
     showHifldLines,
     hifldLines,
     showFiberCables,
+    showFiberOverview,
     fiberCables,
+    fiberOverviewCables,
     isFiberTooltipPersistent,
     viewState.zoom,
     sizeMultiplier,
@@ -1349,8 +1400,8 @@ function App() {
         </div>
       )}
       
-      {/* Fiber Cables Loading Indicator */}
-      {showFiberCables && loadingFiberCables && (
+      {/* Fiber Cables Loading Indicator (auto-hides after ~3 seconds) */}
+      {showFiberCables && showFiberLoadingBanner && (
         <div className="data-warning" style={{ backgroundColor: 'rgba(200, 0, 200, 0.1)', borderColor: 'rgba(200, 0, 200, 0.3)' }}>
           <span>⏳ Loading fiber cables for current view...</span>
         </div>
@@ -1503,6 +1554,8 @@ function App() {
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
         onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
         onToggleFiberCables={() => setShowFiberCables(!showFiberCables)}
+        showFiberOverview={showFiberOverview}
+        onToggleFiberOverview={() => setShowFiberOverview(!showFiberOverview)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
         onSelectAllSources={selectAllSources}
