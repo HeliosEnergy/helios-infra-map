@@ -15,10 +15,12 @@ interface SidePanelProps {
   showWfsCables: boolean;
   showHifldLines: boolean;
   showFiberCables: boolean;
+  showFiberOverview: boolean;
   onTogglePowerPlants: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
   onToggleFiberCables: () => void;
+  onToggleFiberOverview: () => void;
 
   // Filtering state
   filteredSources: Set<string>;
@@ -89,6 +91,12 @@ interface SidePanelProps {
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
   onApplySelection: () => void;
+
+  // Distance measurement
+  isMeasuringDistance: boolean;
+  measuredDistanceMiles: number | null;
+  onStartDistanceMeasurement: () => void;
+  onClearDistanceMeasurement: () => void;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -97,10 +105,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
   showWfsCables,
   showHifldLines,
   showFiberCables,
+  showFiberOverview,
   onTogglePowerPlants,
   onToggleWfsCables,
   onToggleHifldLines,
   onToggleFiberCables,
+  onToggleFiberOverview,
 
   // Filtering
   filteredSources,
@@ -164,6 +174,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onPlantDeselect,
   onApplySelection,
 
+  // Distance measurement
+  isMeasuringDistance,
+  measuredDistanceMiles,
+  onStartDistanceMeasurement,
+  onClearDistanceMeasurement,
+
   // UI
   isCollapsed = false,
   onToggleCollapsed,
@@ -204,10 +220,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 showWfsCables={showWfsCables}
                 showHifldLines={showHifldLines}
                 showFiberCables={showFiberCables}
+                showFiberOverview={showFiberOverview}
                 onTogglePowerPlants={onTogglePowerPlants}
                 onToggleWfsCables={onToggleWfsCables}
                 onToggleHifldLines={onToggleHifldLines}
                 onToggleFiberCables={onToggleFiberCables}
+                onToggleFiberOverview={onToggleFiberOverview}
                 showCanadianPlants={showCanadianPlants}
                 showAmericanPlants={showAmericanPlants}
                 showKazakhstanPlants={showKazakhstanPlants}
@@ -241,6 +259,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 onProximityDistanceChange={onProximityDistanceChange}
                 proximityPlantCount={proximityPlantCount}
                 onOpenProximityDialog={onOpenProximityDialog}
+                // Distance measurement props
+                isMeasuringDistance={isMeasuringDistance}
+                measuredDistanceMiles={measuredDistanceMiles}
+                onStartDistanceMeasurement={onStartDistanceMeasurement}
+                onClearDistanceMeasurement={onClearDistanceMeasurement}
               />
         );
 

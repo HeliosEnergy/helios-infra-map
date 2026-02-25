@@ -6,7 +6,7 @@ import type { PowerPlant } from './models/PowerPlant';
 import type { Cable } from './models/Cable';
 import type { FiberCable } from './models/FiberCable';
 import { loadWfsCableData } from './utils/wfsDataLoader';
-import { generateCirclePolygon } from './utils/geoUtils';
+import { calculateDistance, generateCirclePolygon } from './utils/geoUtils';
 import type { LineSegment } from './utils/spatialIndex';
 import { createLineIndex } from './utils/spatialIndex';
 import RBush from 'rbush';
@@ -234,6 +234,7 @@ function App() {
   const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
+  const [showFiberOverview, setShowFiberOverview] = useState<boolean>(true);
 
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
   const [hoveredLine, setHoveredLine] = useState<HoveredHifldLine | null>(null);
@@ -266,7 +267,13 @@ function App() {
   const [showOnlyNearbyPlants, setShowOnlyNearbyPlants] = useState<boolean>(false);
   const [proximityDistance, setProximityDistance] = useState<number>(0);
   const [sliderValue, setSliderValue] = useState<number>(0);
+  const [isMeasuringDistance, setIsMeasuringDistance] = useState<boolean>(false);
+  const [distancePoints, setDistancePoints] = useState<[number, number][]>([]);
   const debouncedDistance = useDebounce(sliderValue, 300);
+  const measuredDistanceMiles = useMemo(
+    () => (distancePoints.length === 2 ? calculateDistance(distancePoints[0], distancePoints[1]) : null),
+    [distancePoints]
+  );
 
   useEffect(() => {
     setProximityDistance(sliderValue);
@@ -274,6 +281,16 @@ function App() {
 
   const handleSliderChange = useCallback((value: number) => {
     setSliderValue(value);
+  }, []);
+
+  const handleStartDistanceMeasurement = useCallback(() => {
+    setIsMeasuringDistance(true);
+    setDistancePoints([]);
+  }, []);
+
+  const handleClearDistanceMeasurement = useCallback(() => {
+    setIsMeasuringDistance(false);
+    setDistancePoints([]);
   }, []);
 
   const [lineIndex, setLineIndex] = useState<RBush<LineSegment> | null>(null);
@@ -348,6 +365,22 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (showFiberCables && loadedFiberCables.length > 0) {
+      const fiberAsCables: Cable[] = loadedFiberCables.map((fiber) => ({
+        id: fiber.id,
+        name: String((fiber.properties?.name ?? fiber.properties?.NAME ?? fiber.id) as string),
+        coordinates: fiber.path,
+      }));
+      setLineIndex(createLineIndex(fiberAsCables));
+      return;
+    }
+
+    if (wfsCables.length > 0) {
+      setLineIndex(createLineIndex(wfsCables));
+    }
+  }, [showFiberCables, loadedFiberCables, wfsCables]);
 
   useEffect(() => {
     if (!powerPlantMetadata) return;
@@ -515,6 +548,7 @@ function App() {
 
   const { fiberLayer, hifldLayer } = useVectorTileLayers({
     showFiberCables,
+    showFiberOverview,
     showHifldLines,
     zoom: viewState.zoom,
     longitude: viewState.longitude,
@@ -610,6 +644,8 @@ function App() {
     wfsCables,
     fiberLayer,
     hifldLayer,
+    isMeasuringDistance,
+    distancePoints,
     setHoverInfo,
     setLocationPinHoverInfo,
   });
@@ -693,6 +729,16 @@ function App() {
             poolSize: 0 // Disable pooling for large datasets
           }}
           onClick={(info, event) => {
+            if (isMeasuringDistance && Array.isArray(info.coordinate) && info.coordinate.length >= 2) {
+              event.stopPropagation();
+              const point: [number, number] = [info.coordinate[0], info.coordinate[1]];
+              setDistancePoints((prev) => {
+                if (prev.length === 0) return [point];
+                if (prev.length === 1) return [prev[0], point];
+                return [point];
+              });
+              return true;
+            }
             if (info.object && info.layer?.id === 'power-plants') {
               event.stopPropagation();
               setHoverInfo(info.object);
@@ -764,10 +810,12 @@ function App() {
         showWfsCables={showWfsCables}
         showHifldLines={showHifldLines}
         showFiberCables={showFiberCables}
+        showFiberOverview={showFiberOverview}
         onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
         onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
         onToggleFiberCables={() => setShowFiberCables(!showFiberCables)}
+        onToggleFiberOverview={() => setShowFiberOverview(!showFiberOverview)}
         filteredSources={filteredSources}
         onToggleSourceFilter={toggleSourceFilter}
         onSelectAllSources={selectAllSources}
@@ -818,6 +866,10 @@ function App() {
         onPlantSelect={handlePlantSelect}
         onPlantDeselect={handlePlantDeselect}
         onApplySelection={handleApplySelection}
+        isMeasuringDistance={isMeasuringDistance}
+        measuredDistanceMiles={measuredDistanceMiles}
+        onStartDistanceMeasurement={handleStartDistanceMeasurement}
+        onClearDistanceMeasurement={handleClearDistanceMeasurement}
       />
 
        {/* Proximity Dialog */}

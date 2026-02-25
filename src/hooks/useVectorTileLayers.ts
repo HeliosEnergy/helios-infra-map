@@ -13,6 +13,7 @@ import {
 
 type UseVectorTileLayersParams = {
   showFiberCables: boolean;
+  showFiberOverview: boolean;
   showHifldLines: boolean;
   zoom: number;
   longitude: number;
@@ -43,6 +44,7 @@ function viewportToBbox(longitude: number, latitude: number, zoom: number) {
 
 export function useVectorTileLayers({
   showFiberCables,
+  showFiberOverview,
   showHifldLines,
   zoom,
   longitude,
@@ -67,8 +69,10 @@ export function useVectorTileLayers({
 
   // Debounced fetch of fiber cables from /api/fiber-bbox
   useEffect(() => {
-    if (!showFiberCables || qZoom < 4) {
+    const shouldHideFiberForZoom = qZoom < 4 || (qZoom < 8 && !showFiberOverview);
+    if (!showFiberCables || shouldHideFiberForZoom) {
       setFiberFeatures([]);
+      onFiberViewportCables([]);
       return;
     }
 
@@ -127,11 +131,13 @@ export function useVectorTileLayers({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showFiberCables, qZoom, qLon, qLat]);
+  }, [showFiberCables, showFiberOverview, qZoom, qLon, qLat, onFiberViewportCables]);
 
   // ─── Fiber PathLayer (zoom-adaptive styling) ───────────────────────
   const fiberLayer = useMemo(() => {
-    if (!showFiberCables || zoom < 4 || fiberFeatures.length === 0) return null;
+    if (!showFiberCables || zoom < 4 || (zoom < 8 && !showFiberOverview) || fiberFeatures.length === 0) {
+      return null;
+    }
 
     // Scale opacity and width by zoom for visual clarity
     // Low zoom (4-6): thin + transparent → less clutter
@@ -189,6 +195,7 @@ export function useVectorTileLayers({
     });
   }, [
     showFiberCables,
+    showFiberOverview,
     zoom,
     fiberFeatures,
     isFiberTooltipPersistent,

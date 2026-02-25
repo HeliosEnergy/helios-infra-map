@@ -28,6 +28,8 @@ type UseMapLayersParams = {
   wfsCables: Cable[];
   fiberLayer: Layer | null;
   hifldLayer: Layer | null;
+  isMeasuringDistance: boolean;
+  distancePoints: [number, number][];
   setHoverInfo: (plant: PowerPlant | null) => void;
   setLocationPinHoverInfo: (info: LocationHoverInfo) => void;
 };
@@ -66,6 +68,8 @@ export function useMapLayers({
   wfsCables,
   fiberLayer,
   hifldLayer,
+  isMeasuringDistance,
+  distancePoints,
   setHoverInfo,
   setLocationPinHoverInfo,
 }: UseMapLayersParams) {
@@ -181,6 +185,32 @@ export function useMapLayers({
           getWidth: 2,
           onHover: () => {},
         }),
+      isMeasuringDistance && distancePoints.length === 2 &&
+        new PathLayer({
+          id: 'distance-measure-line',
+          data: [{ path: distancePoints }],
+          pickable: false,
+          getPath: (d: { path: [number, number][] }) => d.path,
+          getColor: [59, 130, 246, 220],
+          getWidth: 3,
+          widthUnits: 'pixels',
+          widthMinPixels: 2,
+        }),
+      isMeasuringDistance && distancePoints.length > 0 &&
+        new ScatterplotLayer({
+          id: 'distance-measure-points',
+          data: distancePoints.map((coordinates, index) => ({ coordinates, index })),
+          pickable: false,
+          radiusUnits: 'pixels',
+          radiusMinPixels: 5,
+          radiusMaxPixels: 10,
+          getPosition: (d: { coordinates: [number, number] }) => d.coordinates,
+          getRadius: 6,
+          getFillColor: (d: { index: number }) => (d.index === 0 ? [34, 197, 94, 240] : [239, 68, 68, 240]),
+          getLineColor: [255, 255, 255, 230],
+          stroked: true,
+          lineWidthMinPixels: 1,
+        }),
       fiberLayer,
       hifldLayer,
     ];
@@ -200,6 +230,8 @@ export function useMapLayers({
     wfsCables,
     fiberLayer,
     hifldLayer,
+    isMeasuringDistance,
+    distancePoints,
     setHoverInfo,
     setLocationPinHoverInfo,
   ]);
