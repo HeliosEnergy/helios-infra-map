@@ -37,7 +37,6 @@ The application integrates and processes data from various sources to provide a 
 
 Power plant data is sourced from multiple datasets and unified:
 
-*   **Canadian Power Plants:** Loaded from local CSV files located in `public/data/` (e.g., `Power_Plants,_100_MW_or_more.csv`, `Renewable_Energy_Power_Plants,_1_MW_or_more.csv`).
 *   **Global Power Plant Database:** Used for US, Kazakhstan, UAE, India, Kyrgyzstan, and other international power plants.
     *   **Primary Source:** AWS S3 bucket (`https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/global_power_plant_database.csv`) for the latest data.
     *   **Fallback Source:** Local CSV file (`public/data/global_power_plant_database.csv`) if S3 is unavailable.
