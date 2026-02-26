@@ -76,6 +76,7 @@ const RAW_FIELDS_TO_KEEP = [
   'Operator Name',
   'Address',
   'Zip Code / Postal Code',
+  'Plant URL',
 ] as const;
 
 let datasetCache: { data: PowerPlant[]; timestamp: number } | null = null;
@@ -205,6 +206,103 @@ const parsePowerPlantCSV = (csvText: string, type: 'large' | 'renewable' | 'kaza
       country,
       capacityFactor: 100,
       rawData: entry,
+    });
+  }
+
+  return plants;
+};
+
+const mapEnergySourceFromFuelTypes = (fuelTypes: string): string => {
+  const normalized = fuelTypes.toLowerCase();
+  if (!normalized) return 'other';
+
+  if (normalized.includes('natural gas') || normalized.includes(' gas')) return 'gas';
+  if (normalized.includes('coal')) return 'coal';
+  if (normalized.includes('nuclear')) return 'nuclear';
+  if (normalized.includes('hydro') || normalized.includes('water')) return 'hydro';
+  if (normalized.includes('wind')) return 'wind';
+  if (normalized.includes('solar') || normalized.includes('photovoltaic')) return 'solar';
+  if (normalized.includes('petroleum') || normalized.includes('oil')) return 'oil';
+  if (normalized.includes('biomass') || normalized.includes('biofuel')) return 'biomass';
+  if (normalized.includes('geothermal')) return 'geothermal';
+  if (normalized.includes('battery')) return 'battery';
+  if (normalized.includes('diesel')) return 'diesel';
+  if (normalized.includes('waste')) return 'waste';
+
+  // Fall back to the generic mapper for exact/simple matches.
+  return mapEnergySource(fuelTypes);
+};
+
+const parseUsEiaPlantsCsv = (csvText: string): PowerPlant[] => {
+  const lines = csvText.split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = parseCsvRow(lines[0]).map((h) => h.trim().replace(/^"|"$/g, ''));
+  const plants: PowerPlant[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const row = parseCsvRow(line);
+    if (row.length < headers.length) continue;
+
+    const entry: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      entry[header] = row[index] ? row[index].trim().replace(/^"|"$/g, '') : '';
+    });
+
+    const latitude = parseFloat(entry['Plant Latitude'] || '0');
+    const longitude = parseFloat(entry['Plant Longitude'] || '0');
+    const nameplateCapacity =
+      parseFloat((entry['Operating Total Nameplate Capacity'] || '0').replace(/,/g, '')) || 0;
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || nameplateCapacity <= 0) {
+      continue;
+    }
+
+    let annualGenerationMWh = 0;
+    const annualGenerationFormatted = entry['Annual Generation (Formatted)'] || '';
+    const formattedMatch = annualGenerationFormatted.match(/([\d.]+)\s*(GWh|MWh)/i);
+    if (formattedMatch) {
+      const value = parseFloat(formattedMatch[1]);
+      const unit = formattedMatch[2].toUpperCase();
+      if (Number.isFinite(value)) {
+        annualGenerationMWh = unit === 'GWH' ? value * 1000 : value;
+      }
+    }
+    if (annualGenerationMWh === 0) {
+      annualGenerationMWh = parseFloat((entry['Annual Generation'] || '0').replace(/,/g, '')) || 0;
+    }
+
+    const usedCapacity = annualGenerationMWh > 0 ? annualGenerationMWh / 8760 : 0;
+    const capacityFactor =
+      nameplateCapacity > 0 && usedCapacity > 0 ? (usedCapacity / nameplateCapacity) * 100 : null;
+
+    plants.push({
+      id: `us-eia-${entry['Plant Code'] || i}`,
+      name: entry['Plant Name'] || 'Unknown Plant',
+      output: nameplateCapacity,
+      outputDisplay: `${nameplateCapacity.toFixed(1)} MW`,
+      source: mapEnergySourceFromFuelTypes(entry['Fuel Types'] || ''),
+      coordinates: [longitude, latitude],
+      country: 'US',
+      capacityFactor,
+      capacityMW: nameplateCapacity,
+      usedCapacity: usedCapacity > 0 ? usedCapacity : undefined,
+      generationGWh: annualGenerationMWh > 0 ? annualGenerationMWh / 1000 : undefined,
+      rawData: {
+        technology: entry['Fuel Types'] || 'Unknown',
+        statusDescription: 'Operating',
+        'City (Site Name)': entry['Plant City'] || '',
+        'State / Province / Territory': entry['Plant State'] || '',
+        County: entry['Plant County'] || '',
+        'Owner Name (Company)': entry['Utility Name'] || '',
+        'Operator Name': entry['Utility Name'] || '',
+        Address: entry['Plant Address'] || '',
+        'Zip Code / Postal Code': entry['Plant Zip'] || '',
+        'Plant URL': entry['Plant URL'] || '',
+      },
     });
   }
 
@@ -367,6 +465,33 @@ const loadGlobalPlantDatabaseCsv = async (): Promise<string> => {
   return readDataFile('global_power_plant_database.csv');
 };
 
+const loadUsEiaPlantCsv = async (): Promise<string> => {
+  const eiaCsvS3Url = process.env.US_EIA_PLANTS_CSV_S3_URL;
+
+  if (eiaCsvS3Url) {
+    try {
+      return await fetchTextWithTimeout(eiaCsvS3Url, 30_000);
+    } catch (error) {
+      console.warn('Failed to load US EIA plant CSV from S3, falling back to local file:', error);
+    }
+  }
+
+  const localCandidates = [
+    'eia-plants-export-2026-02-18 09_46_12.csv',
+    'eia-plants-export-2026-02-18+09_46_12.csv',
+  ];
+
+  for (const filename of localCandidates) {
+    try {
+      return await readDataFile(filename);
+    } catch {
+      // Try next local candidate.
+    }
+  }
+
+  throw new Error('US EIA plant CSV unavailable. Set US_EIA_PLANTS_CSV_S3_URL or add a local data file.');
+};
+
 const pickRawFields = (rawData?: Record<string, string>): Record<string, string> | undefined => {
   if (!rawData) return undefined;
 
@@ -401,26 +526,25 @@ const sanitizePlant = (plant: PowerPlant): PowerPlant => ({
 });
 
 const buildUnifiedPlantDataset = async (): Promise<PowerPlant[]> => {
-  const [largePlantsCsv, renewablePlantsCsv, globalPlantsCsv] = await Promise.all([
+  const [largePlantsCsv, renewablePlantsCsv, globalPlantsCsv, usEiaPlantsCsv] = await Promise.all([
     readDataFile('Power_Plants,_100_MW_or_more.csv'),
     readDataFile('Renewable_Energy_Power_Plants,_1_MW_or_more.csv'),
     loadGlobalPlantDatabaseCsv(),
+    loadUsEiaPlantCsv(),
   ]);
 
   const canadaLarge = parsePowerPlantCSV(largePlantsCsv, 'large');
   const canadaRenewable = parsePowerPlantCSV(renewablePlantsCsv, 'renewable');
+  const usEiaPlants = parseUsEiaPlantsCsv(usEiaPlantsCsv);
 
   let globalPlants = parseGlobalPowerPlantCSV(globalPlantsCsv);
-  globalPlants = globalPlants.filter((plant) => plant.country !== 'CA');
-
-  const usPlants = globalPlants.filter((plant) => plant.country === 'US');
-  const nonUsGlobalPlants = globalPlants.filter((plant) => plant.country !== 'US');
+  globalPlants = globalPlants.filter((plant) => plant.country !== 'CA' && plant.country !== 'US');
 
   const merged = aggregatePowerPlants([
     ...canadaLarge,
     ...canadaRenewable,
-    ...nonUsGlobalPlants,
-    ...usPlants,
+    ...globalPlants,
+    ...usEiaPlants,
   ]);
 
   return merged.map(sanitizePlant);

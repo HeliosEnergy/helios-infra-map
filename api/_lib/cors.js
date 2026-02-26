@@ -34,13 +34,34 @@ export const isOriginAllowed = (origin) => {
   return allowedOrigins.some((rule) => doesOriginMatchRule(origin, rule));
 };
 
+const isSameOriginRequest = (req, origin) => {
+  if (!origin) return true;
+
+  try {
+    const parsedOrigin = new URL(origin);
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const rawHost = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) || req.headers.host;
+    if (!rawHost) return false;
+
+    if (parsedOrigin.host !== rawHost) return false;
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const rawProto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+    if (!rawProto) return true;
+
+    return parsedOrigin.protocol.replace(':', '') === rawProto;
+  } catch {
+    return false;
+  }
+};
+
 export const applyCors = (req, res) => {
   const origin = req.headers.origin;
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', DEFAULT_ALLOWED_METHODS);
   res.setHeader('Access-Control-Allow-Headers', DEFAULT_ALLOWED_HEADERS);
 
-  if (!isOriginAllowed(origin)) {
+  if (!isOriginAllowed(origin) && !isSameOriginRequest(req, origin)) {
     return false;
   }
 

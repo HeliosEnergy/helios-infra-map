@@ -11,6 +11,10 @@ import {
   type GeoJsonLikeFeature,
 } from '../utils/vectorFeatureUtils';
 
+const FIBER_OVERVIEW_URL =
+  import.meta.env.VITE_FIBER_OVERVIEW_URL ||
+  'https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/rextag_data_simplified.json';
+
 type UseVectorTileLayersParams = {
   showFiberCables: boolean;
   showFiberOverview: boolean;
@@ -58,8 +62,10 @@ export function useVectorTileLayers({
 }: UseVectorTileLayersParams) {
   // ─── Fiber GeoJSON state ───────────────────────────────────────────
   const [fiberFeatures, setFiberFeatures] = useState<GeoJsonLikeFeature[]>([]);
+  const [fiberOverviewFeatures, setFiberOverviewFeatures] = useState<GeoJsonLikeFeature[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overviewAbortRef = useRef<AbortController | null>(null);
 
   // Quantize viewport so we don't re-fetch on every fractional change.
   // Longitude/latitude rounded to 1 decimal, zoom floored to integer.
@@ -67,10 +73,44 @@ export function useVectorTileLayers({
   const qLon = Math.round(longitude * 10) / 10;
   const qLat = Math.round(latitude * 10) / 10;
 
-  // Debounced fetch of fiber cables from /api/fiber-bbox
+  // Overview dataset fetch (single simplified GeoJSON from env-configured URL)
   useEffect(() => {
-    const shouldHideFiberForZoom = qZoom < 4 || (qZoom < 8 && !showFiberOverview);
-    if (!showFiberCables || shouldHideFiberForZoom) {
+    if (!showFiberOverview) {
+      setFiberOverviewFeatures([]);
+      return;
+    }
+
+    if (overviewAbortRef.current) {
+      overviewAbortRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    overviewAbortRef.current = controller;
+
+    fetch(FIBER_OVERVIEW_URL, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`fiber overview ${res.status}`);
+        return res.json();
+      })
+      .then((geojson: { features?: GeoJsonLikeFeature[] }) => {
+        if (controller.signal.aborted) return;
+        setFiberOverviewFeatures(Array.isArray(geojson.features) ? geojson.features : []);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error('Failed to fetch fiber overview data:', err);
+        setFiberOverviewFeatures([]);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [showFiberOverview]);
+
+  // Debounced fetch of detailed fiber cables from /api/fiber-bbox
+  useEffect(() => {
+    const shouldHideDetailedFiber = !showFiberCables || qZoom < 8;
+    if (shouldHideDetailedFiber) {
       setFiberFeatures([]);
       onFiberViewportCables([]);
       return;
@@ -91,9 +131,7 @@ export function useVectorTileLayers({
       abortRef.current = controller;
 
       const bbox = viewportToBbox(qLon, qLat, qZoom);
-      // Use overview mode at low zoom to get sampled, lighter data
-      const overview = qZoom < 8 ? '&overview=1' : '';
-      const url = `/api/fiber-bbox?minLon=${bbox.minLon}&minLat=${bbox.minLat}&maxLon=${bbox.maxLon}&maxLat=${bbox.maxLat}&zoom=${qZoom}${overview}`;
+      const url = `/api/fiber-bbox?minLon=${bbox.minLon}&minLat=${bbox.minLat}&maxLon=${bbox.maxLon}&maxLat=${bbox.maxLat}&zoom=${qZoom}`;
 
       authenticatedFetch(url, { signal: controller.signal })
         .then((res) => {
@@ -131,11 +169,16 @@ export function useVectorTileLayers({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showFiberCables, showFiberOverview, qZoom, qLon, qLat, onFiberViewportCables]);
+  }, [showFiberCables, qZoom, qLon, qLat, onFiberViewportCables]);
 
   // ─── Fiber PathLayer (zoom-adaptive styling) ───────────────────────
   const fiberLayer = useMemo(() => {
-    if (!showFiberCables || zoom < 4 || (zoom < 8 && !showFiberOverview) || fiberFeatures.length === 0) {
+    const usingOverviewLayer = zoom < 8;
+    const activeFeatures = usingOverviewLayer ? fiberOverviewFeatures : fiberFeatures;
+    const shouldShow =
+      zoom >= 4 && ((usingOverviewLayer && showFiberOverview) || (!usingOverviewLayer && showFiberCables));
+
+    if (!shouldShow || activeFeatures.length === 0) {
       return null;
     }
 
@@ -145,7 +188,7 @@ export function useVectorTileLayers({
     // High zoom (10+): full width + opaque
     let lineWidth: number;
     let opacity: number;
-    if (zoom < 7) {
+    if (usingOverviewLayer || zoom < 7) {
       lineWidth = 1;
       opacity = 0.35;
     } else if (zoom < 10) {
@@ -158,7 +201,7 @@ export function useVectorTileLayers({
 
     return new PathLayer<GeoJsonLikeFeature>({
       id: 'fiber-cables',
-      data: fiberFeatures,
+      data: activeFeatures,
       getPath: (d: GeoJsonLikeFeature) => {
         const geom = d.geometry;
         if (!geom || !geom.coordinates) return [];
@@ -198,6 +241,7 @@ export function useVectorTileLayers({
     showFiberOverview,
     zoom,
     fiberFeatures,
+    fiberOverviewFeatures,
     isFiberTooltipPersistent,
     fiberHoverTimeoutRef,
     onHoveredFiberCable,

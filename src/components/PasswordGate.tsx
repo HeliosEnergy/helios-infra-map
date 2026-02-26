@@ -96,7 +96,16 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       }
 
       if (!response.ok) {
-        setError('Authentication failed. Please try again.');
+        let message = 'Authentication failed. Please try again.';
+        try {
+          const data = (await response.json()) as { error?: string };
+          if (typeof data.error === 'string' && data.error.trim()) {
+            message = data.error;
+          }
+        } catch {
+          // Ignore parse errors and use generic fallback.
+        }
+        setError(message);
         return;
       }
 

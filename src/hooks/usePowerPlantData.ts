@@ -5,6 +5,9 @@ import { authenticatedFetch } from '../utils/auth';
 import type { PowerPlantMetadata, PowerPlantPage } from '../types/powerPlantApi';
 import { useDebounce } from './useDebounce';
 
+const POWER_PLANTS_PAGE_SIZE = 10000;
+const MAX_AUTO_PAGINATION_PAGES = 20;
+
 export type MapViewState = {
   longitude: number;
   latitude: number;
@@ -66,7 +69,7 @@ const buildQuery = (params: UsePowerPlantDataParams) => {
     maxCapacity: params.maxPowerOutput,
     minCapacityFactor: params.minCapacityFactor,
     maxCapacityFactor: params.maxCapacityFactor,
-    limit: 5000,
+    limit: POWER_PLANTS_PAGE_SIZE,
     offset: 0,
   };
 };
@@ -132,29 +135,61 @@ export function usePowerPlantData(params: UsePowerPlantDataParams) {
       try {
         const parsed = JSON.parse(debouncedQueryKey) as ReturnType<typeof buildQuery>;
 
-        const searchParams = new URLSearchParams({
+        const baseSearchParams = new URLSearchParams({
           bbox: parsed.bbox.join(','),
           minCapacity: parsed.minCapacity.toString(),
           maxCapacity: parsed.maxCapacity.toString(),
           minCapacityFactor: parsed.minCapacityFactor.toString(),
           maxCapacityFactor: parsed.maxCapacityFactor.toString(),
-          limit: parsed.limit.toString(),
-          offset: parsed.offset.toString(),
         });
 
-        if (parsed.sources) searchParams.set('sources', parsed.sources);
-        if (parsed.countries) searchParams.set('countries', parsed.countries);
-        if (parsed.statuses) searchParams.set('statuses', parsed.statuses);
+        if (parsed.sources) baseSearchParams.set('sources', parsed.sources);
+        if (parsed.countries) baseSearchParams.set('countries', parsed.countries);
+        if (parsed.statuses) baseSearchParams.set('statuses', parsed.statuses);
 
-        const response = await authenticatedFetch(`/api/power-plants?${searchParams.toString()}`);
-        if (!response.ok) {
-          throw new Error(`Failed to load power plants: ${response.status}`);
+        let offset = parsed.offset;
+        let pageCount = 0;
+        let finalPage: PowerPlantPage['page'] | null = null;
+        const allPlants: PowerPlant[] = [];
+
+        while (pageCount < MAX_AUTO_PAGINATION_PAGES) {
+          if (cancelled) return;
+
+          const searchParams = new URLSearchParams(baseSearchParams);
+          searchParams.set('limit', parsed.limit.toString());
+          searchParams.set('offset', offset.toString());
+
+          const response = await authenticatedFetch(`/api/power-plants?${searchParams.toString()}`);
+          if (!response.ok) {
+            throw new Error(`Failed to load power plants: ${response.status}`);
+          }
+
+          const payload = (await response.json()) as PowerPlantPage;
+          const pageData = Array.isArray(payload.data) ? payload.data : [];
+          const pageInfo = payload?.page ?? null;
+
+          allPlants.push(...pageData);
+          finalPage = pageInfo;
+
+          if (!pageInfo?.hasMore || pageData.length === 0) {
+            break;
+          }
+
+          offset += pageData.length;
+          pageCount += 1;
         }
 
-        const payload = (await response.json()) as PowerPlantPage;
         if (!cancelled) {
-          setPowerPlants(Array.isArray(payload.data) ? payload.data : []);
-          setPage(payload?.page ?? null);
+          const total = finalPage?.total ?? allPlants.length;
+          const hasMore = finalPage?.hasMore ?? false;
+
+          setPowerPlants(allPlants);
+          setPage({
+            limit: allPlants.length,
+            offset: parsed.offset,
+            total,
+            hasMore,
+          });
         }
       } catch (fetchError) {
         if (!cancelled) {

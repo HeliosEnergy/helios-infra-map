@@ -18,7 +18,7 @@ import SidePanel from './components/SidePanel';
 import ProximityDialog from './components/ProximityDialog';
 import AddressSearch from './components/AddressSearch';
 import LocationStatsPanel from './components/LocationStatsPanel';
-import { Search, MapPin, X, AlertTriangle } from 'lucide-react';
+import { Search, MapPin, X, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useDebounce } from './hooks/useDebounce';
 import { usePowerPlantData } from './hooks/usePowerPlantData';
 import { useProximityAnalysis } from './hooks/useProximityAnalysis';
@@ -231,7 +231,7 @@ function App() {
   const { theme } = useTheme();
   const [wfsCables, setWfsCables] = useState<Cable[]>([]);
   const [showPowerPlants, setShowPowerPlants] = useState<boolean>(true);
-  const [showWfsCables, setShowWfsCables] = useState<boolean>(true);
+  const [showWfsCables, setShowWfsCables] = useState<boolean>(false);
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
   const [showFiberOverview, setShowFiberOverview] = useState<boolean>(true);
@@ -912,6 +912,7 @@ function App() {
                  const usedCapacity = plant.usedCapacity || 0;
                  const excessCapacity = availableCapacity - usedCapacity;
                  const capacityFactor = availableCapacity > 0 ? (usedCapacity / availableCapacity) * 100 : 0;
+                 const plantUrl = plant.rawData?.['Plant URL'];
                  
                  return (
                    <>
@@ -922,6 +923,18 @@ function App() {
                      <p>Excess Capacity: {excessCapacity.toFixed(1)} MW</p>
                      <p>Capacity Factor: {capacityFactor.toFixed(1)}%</p>
                      <p>Coordinates: {plant.coordinates[1].toFixed(4)}, {plant.coordinates[0].toFixed(4)}</p>
+
+                     {plantUrl && (
+                       <div className="cta-buttons" style={{ marginTop: '12px' }}>
+                         <button
+                           onClick={() => window.open(plantUrl, '_blank', 'noopener,noreferrer')}
+                           aria-label={`View ${plant.name} plant page`}
+                         >
+                           <ExternalLink size={16} />
+                           View Plant Page
+                         </button>
+                       </div>
+                     )}
 
                      {/* Nearby Fiber Cables Section - Only show when persistent and fiber cables are loaded */}
                      {isTooltipPersistent && showFiberCables && (
