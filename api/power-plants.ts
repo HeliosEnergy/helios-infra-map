@@ -11,7 +11,8 @@ import {
 
 const RATE_LIMIT = {
   key: 'power-plants',
-  maxRequests: 10,
+  // Interactive map panning/zooming + auto-pagination can legitimately issue bursts.
+  maxRequests: 120,
   windowMs: 60 * 1000,
 };
 

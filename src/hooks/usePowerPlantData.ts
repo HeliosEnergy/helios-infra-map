@@ -122,6 +122,7 @@ export function usePowerPlantData(params: UsePowerPlantDataParams) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     const loadPlants = async () => {
       if (!params.isFilterStateReady) {
@@ -159,9 +160,19 @@ export function usePowerPlantData(params: UsePowerPlantDataParams) {
           searchParams.set('limit', parsed.limit.toString());
           searchParams.set('offset', offset.toString());
 
-          const response = await authenticatedFetch(`/api/power-plants?${searchParams.toString()}`);
+          const response = await authenticatedFetch(`/api/power-plants?${searchParams.toString()}`, {
+            signal: controller.signal,
+          });
           if (!response.ok) {
-            throw new Error(`Failed to load power plants: ${response.status}`);
+            let retryAfter: string | null = null;
+            if (response.status === 429) {
+              retryAfter = response.headers.get('Retry-After');
+            }
+            throw new Error(
+              response.status === 429
+                ? `Rate limited loading power plants${retryAfter ? ` (retry in ${retryAfter}s)` : ''}`
+                : `Failed to load power plants: ${response.status}`
+            );
           }
 
           const payload = (await response.json()) as PowerPlantPage;
@@ -192,10 +203,17 @@ export function usePowerPlantData(params: UsePowerPlantDataParams) {
           });
         }
       } catch (fetchError) {
+        const isAbort =
+          fetchError instanceof DOMException
+            ? fetchError.name === 'AbortError'
+            : fetchError instanceof Error && fetchError.name === 'AbortError';
+        if (isAbort || cancelled) {
+          return;
+        }
+
         if (!cancelled) {
           setError(fetchError instanceof Error ? fetchError.message : 'Failed to load power plants');
-          setPowerPlants([]);
-          setPage(null);
+          // Preserve existing plants/page on transient failures (e.g., 429 during fast zoom).
         }
       } finally {
         if (!cancelled) {
@@ -208,6 +226,7 @@ export function usePowerPlantData(params: UsePowerPlantDataParams) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [debouncedQueryKey, params.isFilterStateReady]);
 
