@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
-import { MVTLayer } from '@deck.gl/geo-layers';
 import { PathLayer } from '@deck.gl/layers';
 import type { FiberCable } from '../models/FiberCable';
+import type { TransmissionLine } from '../models/TransmissionLine';
 import type { HoveredFiberCable, HoveredHifldLine } from '../types/vectorFeatures';
 import { authenticatedFetch } from '../utils/auth';
 import {
@@ -14,6 +14,7 @@ import {
 const FIBER_OVERVIEW_URL =
   import.meta.env.VITE_FIBER_OVERVIEW_URL ||
   'https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/rextag_data_simplified.json';
+const HIFLD_S3_API_URL = '/api/hifld-s3';
 
 type UseVectorTileLayersParams = {
   showFiberCables: boolean;
@@ -28,10 +29,6 @@ type UseVectorTileLayersParams = {
   onHoveredFiberCable: (cable: HoveredFiberCable | null) => void;
   onHoveredHifldLine: (line: HoveredHifldLine | null) => void;
   onFiberViewportCables: (cables: FiberCable[]) => void;
-};
-
-const fetchTileWithAuth = async (url: string, init?: RequestInit): Promise<Response> => {
-  return authenticatedFetch(url, init);
 };
 
 /** Compute a bbox from viewport center + zoom. */
@@ -63,9 +60,11 @@ export function useVectorTileLayers({
   // ─── Fiber GeoJSON state ───────────────────────────────────────────
   const [fiberFeatures, setFiberFeatures] = useState<GeoJsonLikeFeature[]>([]);
   const [fiberOverviewFeatures, setFiberOverviewFeatures] = useState<GeoJsonLikeFeature[]>([]);
+  const [hifldFeatures, setHifldFeatures] = useState<GeoJsonLikeFeature[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overviewAbortRef = useRef<AbortController | null>(null);
+  const hifldAbortRef = useRef<AbortController | null>(null);
 
   // Quantize viewport so we don't re-fetch on every fractional change.
   // Longitude/latitude rounded to 1 decimal, zoom floored to integer.
@@ -106,6 +105,64 @@ export function useVectorTileLayers({
       controller.abort();
     };
   }, [showFiberOverview]);
+
+  // HIFLD transmission lines (legacy S3 JSON API path from personal branch)
+  useEffect(() => {
+    if (!showHifldLines || hifldFeatures.length > 0) {
+      return;
+    }
+
+    if (hifldAbortRef.current) {
+      hifldAbortRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    hifldAbortRef.current = controller;
+
+    authenticatedFetch(HIFLD_S3_API_URL, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`hifld-s3 ${res.status}`);
+        return res.json();
+      })
+      .then((payload: unknown) => {
+        if (controller.signal.aborted) return;
+
+        if (Array.isArray(payload)) {
+          const features: GeoJsonLikeFeature[] = payload
+            .map((line, index) => {
+              const record = line as TransmissionLine;
+              if (!Array.isArray(record?.coordinates) || record.coordinates.length < 2) {
+                return null;
+              }
+
+              return {
+                id: record.id || `hifld-${index}`,
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: record.coordinates,
+                },
+                properties: record.properties || {},
+              } as GeoJsonLikeFeature;
+            })
+            .filter(Boolean) as GeoJsonLikeFeature[];
+
+          setHifldFeatures(features);
+          return;
+        }
+
+        const featureCollection = payload as { features?: GeoJsonLikeFeature[] } | null;
+        setHifldFeatures(Array.isArray(featureCollection?.features) ? featureCollection.features : []);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error('Failed to fetch HIFLD transmission lines:', err);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [showHifldLines, hifldFeatures.length]);
 
   // Debounced fetch of detailed fiber cables from /api/fiber-bbox
   useEffect(() => {
@@ -247,22 +304,27 @@ export function useVectorTileLayers({
     onHoveredFiberCable,
   ]);
 
-  // ─── HIFLD MVTLayer (unchanged) ───────────────────────────────────
+  // ─── HIFLD PathLayer (legacy S3 JSON path from personal branch) ──
   const hifldLayer = useMemo(() => {
-    if (!showHifldLines) return null;
+    if (!showHifldLines || hifldFeatures.length === 0) return null;
 
-    return new MVTLayer({
+    return new PathLayer<GeoJsonLikeFeature>({
       id: 'hifld-lines',
-      data: '/api/vector/hifld/{z}/{x}/{y}.pbf',
-      minZoom: 2,
-      maxZoom: 14,
-      binary: false,
+      data: hifldFeatures,
       pickable: true,
-      stroked: true,
-      filled: false,
-      lineWidthUnits: 'pixels',
-      lineWidthMinPixels: 1,
-      getLineColor: (feature: { properties?: Record<string, unknown> }) => {
+      widthUnits: 'pixels',
+      widthMinPixels: 1,
+      getPath: (d: GeoJsonLikeFeature) => {
+        const geom = d.geometry;
+        if (!geom || !geom.coordinates) return [];
+        if (geom.type === 'LineString') return geom.coordinates as [number, number][];
+        if (geom.type === 'MultiLineString') {
+          const multi = geom.coordinates as [number, number][][];
+          return multi[0] || [];
+        }
+        return [];
+      },
+      getColor: (feature: { properties?: Record<string, unknown> }) => {
         const properties = feature.properties || {};
         const voltage = Number(properties.voltage ?? properties.VOLTAGE ?? 0);
         const voltClass = String(properties.voltClass ?? properties.VOLT_CLASS ?? '');
@@ -277,7 +339,7 @@ export function useVectorTileLayers({
 
         return [100, 150, 200, 100];
       },
-      getLineWidth: (feature: { properties?: Record<string, unknown> }) => {
+      getWidth: (feature: { properties?: Record<string, unknown> }) => {
         const properties = feature.properties || {};
         const voltClass = String(properties.voltClass ?? properties.VOLT_CLASS ?? '');
 
@@ -285,15 +347,11 @@ export function useVectorTileLayers({
         if (voltClass === '345' || voltClass === '230') return 0.9;
         return 0.7;
       },
-      getPickingRadius: 35,
       opacity: 0.8,
       autoHighlight: false,
       highlightColor: [255, 200, 0, 255],
-      lineCapRounded: false,
-      lineJointRounded: false,
-      loadOptions: {
-        fetch: fetchTileWithAuth,
-      },
+      capRounded: false,
+      jointRounded: false,
       onHover: (info: { object?: GeoJsonLikeFeature }) => {
         if (lineHoverTimeoutRef.current) {
           clearTimeout(lineHoverTimeoutRef.current);
@@ -311,7 +369,7 @@ export function useVectorTileLayers({
         }
       },
     });
-  }, [showHifldLines, lineHoverTimeoutRef, onHoveredHifldLine]);
+  }, [showHifldLines, hifldFeatures, lineHoverTimeoutRef, onHoveredHifldLine]);
 
   return {
     fiberLayer,
