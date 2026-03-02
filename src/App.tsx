@@ -249,6 +249,7 @@ function App() {
   const fiberHoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [filteredSources, setFilteredSources] = useState<Set<string>>(new Set());
+  const [hasInitializedSources, setHasInitializedSources] = useState(false);
   const [minPowerOutput, setMinPowerOutput] = useState<number>(0);
   const [maxPowerOutput, setMaxPowerOutput] = useState<number>(10000);
   const [minCapacityFactor, setMinCapacityFactor] = useState<number>(0);
@@ -399,8 +400,10 @@ function App() {
       return Math.min(max, Math.max(prev, min));
     });
 
-    if (filteredSources.size === 0) {
+    // Initialize source filters once from metadata; don't overwrite user choices
+    if (!hasInitializedSources) {
       setFilteredSources(new Set(powerPlantMetadata.sources));
+      setHasInitializedSources(true);
     }
 
     if (allStatuses.length === 0) {
@@ -433,7 +436,7 @@ function App() {
     }
   }, [
     powerPlantMetadata,
-    filteredSources.size,
+    hasInitializedSources,
     allStatuses.length,
     allCountries.length,
     enabledCountries.size,

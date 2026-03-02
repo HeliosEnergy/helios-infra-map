@@ -1,8 +1,21 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts';
 import './DataVisualizations.css';
 import { authenticatedFetch } from '../utils/auth';
+import type { PowerPlantPage } from '../types/powerPlantApi';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1919', '#82ca9d', '#ffc658'];
 
@@ -55,13 +68,22 @@ const DataVisualizations: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load EIA data
-        const eiaResponse = await authenticatedFetch('/api/power-plants');
-        const eiaJson = await eiaResponse.json();
-        setEiaData(eiaJson);
+        // Load unified power plant data (same API used by the map)
+        const response = await authenticatedFetch('/api/power-plants?limit=200000');
+        if (!response.ok) {
+          throw new Error(`Failed to load power plant data: ${response.status}`);
+        }
 
+        const payload = (await response.json()) as PowerPlantPage | EIAPlantData[];
 
+        // Support both paginated { data, page } shape and raw array shape
+        const plants = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.data)
+            ? payload.data
+            : [];
 
+        setEiaData(plants as EIAPlantData[]);
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
