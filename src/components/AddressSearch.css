@@ -18,6 +18,26 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+.address-search-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #666;
+  line-height: 1.3;
+}
+
+.address-search-hint strong {
+  font-weight: 600;
+  color: #444;
+}
+
+.dark .address-search-hint {
+  color: #888;
+}
+
+.dark .address-search-hint strong {
+  color: #aaa;
+}
+
 .dark .address-search-input-wrapper {
   background: #1a1a1a;
   border-color: rgba(255, 255, 255, 0.1);
