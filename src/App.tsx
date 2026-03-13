@@ -319,6 +319,8 @@ function App() {
     coordinates: [number, number];
     addressName: string;
   } | null>(null);
+  /** Skip first circle-fit after a new location is selected so fiber fetch isn't cancelled (works in prod and dev). */
+  const lastFittedLocationKeyRef = useRef<string | null>(null);
   const [locationRadius, setLocationRadius] = useState<number>(5);
   const [isStatsPanelCollapsed, setIsStatsPanelCollapsed] = useState<boolean>(false);
   const [showRadiusCircle, setShowRadiusCircle] = useState<boolean>(false);
@@ -596,10 +598,18 @@ function App() {
     return generateCirclePolygon(selectedLocation.coordinates, locationRadius, 64);
   }, [selectedLocation, locationRadius]);
 
-  // Auto-zoom to fit circle when radius changes - ensures full circle is always visible
-  // Updates immediately to show full circle perimeter as radius changes
+  // Auto-zoom to fit circle when radius changes - ensures full circle is always visible.
+  // Skip the first run after a new location is selected so we don't overwrite viewState and cancel the fiber fetch (prod-safe).
   useEffect(() => {
-    if (!selectedLocation || !locationCircle) return;
+    if (!selectedLocation || !locationCircle) {
+      lastFittedLocationKeyRef.current = null;
+      return;
+    }
+    const locationKey = `${selectedLocation.coordinates[0]},${selectedLocation.coordinates[1]}`;
+    if (lastFittedLocationKeyRef.current !== locationKey) {
+      lastFittedLocationKeyRef.current = locationKey;
+      return;
+    }
 
     const lons = locationCircle.map(p => p[0]);
     const lats = locationCircle.map(p => p[1]);

@@ -190,31 +190,39 @@ export function useVectorTileLayers({
       const bbox = viewportToBbox(qLon, qLat, qZoom);
       const url = `/api/fiber-bbox?minLon=${bbox.minLon}&minLat=${bbox.minLat}&maxLon=${bbox.maxLon}&maxLat=${bbox.maxLat}&zoom=${qZoom}`;
 
-      authenticatedFetch(url, { signal: controller.signal })
-        .then((res) => {
-          if (!res.ok) throw new Error(`fiber-bbox ${res.status}`);
-          return res.json();
-        })
-        .then((geojson: { features?: GeoJsonLikeFeature[] }) => {
-          if (controller.signal.aborted) return;
-          const features = geojson.features ?? [];
-          setFiberFeatures(features);
+      const doFetch = (retryAfter401 = false) => {
+        authenticatedFetch(url, { signal: controller.signal })
+          .then((res) => {
+            if (res.status === 401 && !retryAfter401) {
+              if (controller.signal.aborted) return;
+              setTimeout(() => doFetch(true), 400);
+              return;
+            }
+            if (!res.ok) throw new Error(`fiber-bbox ${res.status}`);
+            return res.json();
+          })
+          .then((geojson: { features?: GeoJsonLikeFeature[] } | undefined) => {
+            if (!geojson || controller.signal.aborted) return;
+            const features = geojson.features ?? [];
+            setFiberFeatures(features);
 
-          // Convert to FiberCable[] for nearby-fiber analysis
-          const cables: FiberCable[] = [];
-          const dedupe = new Set<string>();
-          for (let i = 0; i < features.length; i++) {
-            const cable = featureToFiberCable(features[i], `fiber-${i}`);
-            if (!cable || dedupe.has(cable.id)) continue;
-            dedupe.add(cable.id);
-            cables.push(cable);
-          }
-          onFiberViewportCables(cables);
-        })
-        .catch((err) => {
-          if (err.name === 'AbortError') return;
-          console.error('Failed to fetch fiber cables:', err);
-        });
+            const cables: FiberCable[] = [];
+            const dedupe = new Set<string>();
+            for (let i = 0; i < features.length; i++) {
+              const cable = featureToFiberCable(features[i], `fiber-${i}`);
+              if (!cable || dedupe.has(cable.id)) continue;
+              dedupe.add(cable.id);
+              cables.push(cable);
+            }
+            onFiberViewportCables(cables);
+          })
+          .catch((err) => {
+            if (err.name === 'AbortError') return;
+            console.error('Failed to fetch fiber cables:', err);
+          });
+      };
+
+      doFetch(false);
     }, delay);
 
     return () => {

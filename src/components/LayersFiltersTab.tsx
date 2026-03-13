@@ -179,6 +179,42 @@ function getCountryFlag(countryCode: string): string {
   return flagMap[countryCode] || '🏳️';
 }
 
+// Region → ISO country codes (matching the codes used in allCountries)
+const REGION_COUNTRIES: Record<
+  'europe' | 'africa' | 'asia' | 'northAmerica' | 'southAmerica' | 'oceania',
+  string[]
+> = {
+  europe: [
+    'FRA', 'DEU', 'ESP', 'ITA', 'GBR', 'NLD', 'BEL', 'SWE', 'NOR', 'DNK', 'POL', 'FIN', 'CHE',
+    'TUR', 'AUT', 'GRC', 'CZE', 'PRT', 'ROU', 'UKR', 'IRL', 'BGR', 'HUN', 'SVK', 'EST', 'LTU',
+    'LVA', 'SRB', 'SVN', 'BIH', 'HRV', 'ALB', 'MNE', 'MKD', 'ISL', 'LUX', 'BLR', 'KOS', 'GEO',
+    'CYP', 'MDA', 'MD', 'RUS', 'RU'
+  ],
+  africa: [
+    'ZAF', 'EGY', 'MAR', 'DZA', 'NGA', 'KEN', 'ETH', 'GHA', 'UGA', 'TZA', 'ZMB', 'MOZ', 'AGO',
+    'NAM', 'RWA', 'SEN', 'ZWE', 'COD', 'CMR', 'CIV', 'TUN', 'SDN', 'MLI', 'BWA', 'BEN', 'ERI',
+    'CAF', 'GAB', 'GMB', 'GNQ', 'LBR', 'LSO', 'MDG', 'MWI', 'MUS', 'NER', 'MRT', 'CPV', 'SWZ',
+    'DJI', 'BFA', 'BDI', 'GIN', 'GNB', 'COG', 'SLE', 'TGO', 'ESH', 'LBY'
+  ],
+  asia: [
+    'CHN', 'IND', 'IN', 'JPN', 'KOR', 'KZ', 'KG', 'PAK', 'BGD', 'VNM', 'THA', 'IDN', 'PHL', 'MMR', 'IRN', 'IRQ',
+    'SAU', 'ARE', 'QAT', 'OMN', 'KWT', 'ISR', 'LBN', 'JOR', 'AFG', 'NPL', 'LKA', 'KHM', 'LAO',
+    'SGP', 'TUR', 'KAZ', 'KGZ', 'UZB', 'TJK', 'TKM', 'YEM', 'SYR', 'ARM', 'AZE', 'MNG',
+    'BTN', 'BHR', 'BRN', 'MYS', 'PRK', 'PSE', 'TWN', 'ARE', 'AE'
+  ],
+  northAmerica: [
+    'US', 'CA', 'CAN', 'MEX', 'GTM', 'HND', 'SLV', 'NIC', 'CRI', 'PAN', 'CUB', 'DOM', 'JAM', 'TTO',
+    'GUF', 'LCA'
+  ],
+  southAmerica: [
+    'BRA', 'ARG', 'CHL', 'PER', 'COL', 'URY', 'BOL', 'PRY', 'ECU', 'VEN', 'SUR', 'GUY'
+  ],
+  oceania: [
+    // Australia & Oceania region
+    'AUS', 'NZL', 'PNG', 'FJI',
+  ],
+};
+
 interface LayersFiltersTabProps {
   // Layer visibility
   showPowerPlants: boolean;
@@ -311,6 +347,43 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   // State for country dropdown
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
   const [countrySearchTerm, setCountrySearchTerm] = useState('');
+  const [expandedRegions, setExpandedRegions] = useState<Record<keyof typeof regionLabels, boolean>>({
+    europe: true,
+    africa: true,
+    asia: true,
+    northAmerica: true,
+    southAmerica: true,
+    oceania: true,
+    other: true,
+  });
+
+  const handleRegionSelect = (regionKey: keyof typeof REGION_COUNTRIES) => {
+    const regionCodes = new Set(REGION_COUNTRIES[regionKey]);
+
+    // Only care about codes that actually exist in data
+    const validCodes = allCountries
+      .map((country) => country.code)
+      .filter((code) => regionCodes.has(code));
+
+    if (validCodes.length === 0) return;
+
+    // If all valid codes are already enabled, toggle them off; otherwise toggle them on
+    const allEnabled = validCodes.every((code) => enabledCountries.has(code));
+
+    validCodes.forEach((code) => {
+      const isEnabled = enabledCountries.has(code);
+      if (allEnabled ? isEnabled : !isEnabled) {
+        onToggleCountryFilter(code);
+      }
+    });
+  };
+
+  const toggleRegionExpanded = (regionKey: keyof typeof regionLabels) => {
+    setExpandedRegions((prev) => ({
+      ...prev,
+      [regionKey]: !prev[regionKey],
+    }));
+  };
   
   // Filter countries based on search term and sort with US/CA pinned at top
   const filteredCountries = allCountries
@@ -319,7 +392,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
       country.code.toLowerCase().includes(countrySearchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Pin US and CA at the top
+      // Pin US and CA at the top (for North America group)
       if (a.code === 'US' && b.code !== 'US') return -1;
       if (b.code === 'US' && a.code !== 'US') return 1;
       if (a.code === 'CA' && b.code !== 'CA' && b.code !== 'US') return -1;
@@ -328,6 +401,55 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
       // Sort the rest alphabetically by name
       return a.name.localeCompare(b.name);
     });
+
+  const regionLabels: Record<keyof typeof REGION_COUNTRIES | 'other', string> = {
+    europe: 'Europe',
+    africa: 'Africa',
+    asia: 'Asia',
+    northAmerica: 'North America',
+    southAmerica: 'South America',
+    oceania: 'Australia & Oceania',
+    other: 'Other',
+  };
+
+  const groupedCountries = (() => {
+    const countryToRegion: Partial<Record<string, keyof typeof REGION_COUNTRIES>> = {};
+    (Object.entries(REGION_COUNTRIES) as [keyof typeof REGION_COUNTRIES, string[]][])
+      .forEach(([regionKey, codes]) => {
+        codes.forEach((code) => {
+          if (!countryToRegion[code]) {
+            countryToRegion[code] = regionKey;
+          }
+        });
+      });
+
+    const groups: Record<keyof typeof regionLabels, typeof filteredCountries> = {
+      europe: [],
+      africa: [],
+      asia: [],
+      northAmerica: [],
+      southAmerica: [],
+      oceania: [],
+      other: [],
+    };
+
+    filteredCountries.forEach((country) => {
+      const regionKey =
+        (countryToRegion[country.code] as keyof typeof REGION_COUNTRIES | undefined) ?? 'other';
+      groups[regionKey].push(country);
+    });
+
+    return groups;
+  })();
+
+  const isRegionFullyEnabled = (regionKey: keyof typeof REGION_COUNTRIES) => {
+    const regionCodes = new Set(REGION_COUNTRIES[regionKey]);
+    const validCodes = allCountries
+      .map((country) => country.code)
+      .filter((code) => regionCodes.has(code));
+    if (validCodes.length === 0) return false;
+    return validCodes.every((code) => enabledCountries.has(code));
+  };
 
   // Power range presets - use actual calculated max instead of hardcoded 10000
   const powerRangePresets = {
@@ -537,21 +659,59 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                   />
                 </div>
                 <div className="country-list">
-                  {filteredCountries.map(country => (
-                    <label key={country.code} className="country-item">
-                      <input
-                        type="checkbox"
-                        checked={enabledCountries.has(country.code)}
-                        onChange={() => onToggleCountryFilter(country.code)}
-                      />
-                      <span className="country-flag">{getCountryFlag(country.code)}</span>
-                      <span className="country-name">{country.name}</span>
-                      <span className="country-count">({country.count})</span>
-                      {country.usedCapacity && (
-                        <span className="country-capacity">• {country.usedCapacity.toFixed(1)} MW used</span>
-                      )}
-                    </label>
-                  ))}
+                  {(['europe', 'asia', 'northAmerica', 'africa', 'southAmerica', 'oceania', 'other'] as const)
+                    .map((regionKey) => {
+                      const countriesInRegion = groupedCountries[regionKey];
+                      if (!countriesInRegion || countriesInRegion.length === 0) return null;
+
+                      const expanded = expandedRegions[regionKey] ?? true;
+
+                      return (
+                        <div key={regionKey} className="country-region">
+                          <div className="country-region-header">
+                            <button
+                              type="button"
+                              className={`region-arrow ${expanded ? 'expanded' : ''}`}
+                              onClick={() => toggleRegionExpanded(regionKey)}
+                              aria-label={expanded ? `Collapse ${regionLabels[regionKey]}` : `Expand ${regionLabels[regionKey]}`}
+                            >
+                              ▶
+                            </button>
+                            {regionKey !== 'other' && (
+                              <input
+                                type="checkbox"
+                                checked={isRegionFullyEnabled(regionKey)}
+                                onChange={() => handleRegionSelect(regionKey)}
+                              />
+                            )}
+                            <span className="country-region-name">
+                              {regionLabels[regionKey]}
+                            </span>
+                          </div>
+                          {expanded && (
+                            <div className="country-region-list">
+                              {countriesInRegion.map((country) => (
+                                <label key={country.code} className="country-item">
+                                  <input
+                                    type="checkbox"
+                                    checked={enabledCountries.has(country.code)}
+                                    onChange={() => onToggleCountryFilter(country.code)}
+                                  />
+                                  <span className="country-flag">{getCountryFlag(country.code)}</span>
+                                  <span className="country-name">{country.name}</span>
+                                  <span className="country-count">({country.count})</span>
+                                  {country.usedCapacity && (
+                                    <span className="country-capacity">
+                                      • {country.usedCapacity.toFixed(1)} MW used
+                                    </span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
