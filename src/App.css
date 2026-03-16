@@ -55,16 +55,18 @@
 
 .loading-indicator {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  bottom: 80px; /* raised above very bottom so it's visible */
+  left: 24px;
+  transform: none;
   z-index: 1000;
   background-color: rgba(255, 255, 255, 0.9);
-  padding: 20px;
+  padding: 12px 18px;
   border-radius: 8px;
   backdrop-filter: blur(10px);
   color: #000000;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  pointer-events: none; /* let zoom/pan events reach the map */
+  user-select: none;
 }
 
 .dark .loading-indicator {
