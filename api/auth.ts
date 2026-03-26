@@ -8,6 +8,7 @@ import {
 } from './_lib/auth.js';
 import { applyCors, handleCorsPreflight } from './_lib/cors.js';
 import { applyRateLimit } from './_lib/rateLimit.js';
+import { validateApprovedUserLogin } from './_lib/accessControl.js';
 
 const AUTH_RATE_LIMIT = {
   key: 'auth',
@@ -37,13 +38,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!applyRateLimit(req, res, AUTH_RATE_LIMIT)) return;
 
-  if (!isAuthConfigured()) {
-    return res.status(503).json({
-      error: 'Server auth is not configured. Set APP_PASSWORD (or APP_PASSWORDS) and AUTH_JWT_SECRET.',
-    });
-  }
-
   if (req.method === 'GET') {
+    if (!isAuthConfigured()) {
+      return res.status(503).json({
+        error: 'Server auth is not configured.',
+      });
+    }
+
     const token = getBearerToken(req);
     if (!token) {
       return res.status(200).json({ authenticated: false });
@@ -65,10 +66,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = parseBody(req);
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
 
-  if (!password || !isPasswordValid(password.trim())) {
-    return res.status(401).json({ error: 'Invalid password' });
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required.' });
+  }
+
+  if (email) {
+    try {
+      const loginResult = await validateApprovedUserLogin({
+        email,
+        password: password.trim(),
+      });
+      if (!loginResult.ok) {
+        if (loginResult.reason === 'pending') {
+          return res.status(403).json({ error: 'Access request is pending approval.' });
+        }
+        if (loginResult.reason === 'rejected') {
+          return res.status(403).json({ error: 'Your access request was rejected.' });
+        }
+        if (loginResult.reason === 'access_expired') {
+          return res.status(403).json({ error: 'Access expired. Please request access again.' });
+        }
+        return res.status(401).json({ error: 'Invalid email or password.' });
+      }
+    } catch (error) {
+      console.error('Email auth failed:', error);
+      return res.status(500).json({ error: 'Unable to validate access right now.' });
+    }
+  } else {
+    if (!isAuthConfigured()) {
+      return res.status(503).json({
+        error: 'Server auth is not configured. Set APP_PASSWORD (or APP_PASSWORDS) and AUTH_JWT_SECRET.',
+      });
+    }
+    if (!isPasswordValid(password.trim())) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
   }
 
   const { token, expiresAt } = issueAuthToken();

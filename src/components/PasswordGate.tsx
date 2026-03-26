@@ -13,8 +13,10 @@ type PasswordGateProps = {
 };
 
 const PasswordGate = ({ children }: PasswordGateProps) => {
+  const [email, setEmail] = useState('');
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [authToken, setAuthTokenState] = useState<string | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -24,8 +26,10 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
   const handleLogout = useCallback(() => {
     clearAuthToken();
     setAuthTokenState(null);
+    setEmail('');
     setInput('');
     setError('');
+    setInfo('');
     setIsUnlocked(false);
   }, []);
 
@@ -80,6 +84,7 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
+    setInfo('');
 
     try {
       const response = await fetch('/api/auth', {
@@ -87,7 +92,7 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ password: input.trim() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password: input.trim() }),
       });
 
       if (response.status === 401) {
@@ -118,9 +123,42 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       setAuthToken(data.token);
       setAuthTokenState(data.token);
       setIsUnlocked(true);
+      setEmail('');
       setInput('');
     } catch {
       setError('Authentication request failed. Please check your connection.');
+    }
+  };
+
+  const handleRequestAccess = async () => {
+    setError('');
+    setInfo('');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const password = input.trim();
+    if (!normalizedEmail || !password) {
+      setError('Enter your email and a password to request access.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/access-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: normalizedEmail, password }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(data.error || 'Failed to submit access request.');
+        return;
+      }
+
+      setInfo('Access request submitted. We will review and approve by email.');
+    } catch {
+      setError('Could not submit access request right now.');
     }
   };
 
@@ -128,8 +166,18 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     <div className="password-gate">
       <div className="password-gate-card">
         <h1>Helios Energy</h1>
-        <p>Please enter the access password to continue.</p>
+        <p>Sign in with approved email access, or request temporary access.</p>
         <form onSubmit={handleSubmit}>
+          <label htmlFor="app-email">Email</label>
+          <input
+            id="app-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            placeholder="you@company.com"
+            required
+          />
           <label htmlFor="app-password">Password</label>
           <input
             id="app-password"
@@ -141,7 +189,11 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
             required
           />
           {error && <p className="password-gate-error">{error}</p>}
+          {info && <p className="password-gate-info">{info}</p>}
           <button type="submit">Unlock</button>
+          <button type="button" className="secondary-button" onClick={handleRequestAccess}>
+            Request Access
+          </button>
         </form>
       </div>
     </div>

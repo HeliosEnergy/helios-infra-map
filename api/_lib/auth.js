@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const DEFAULT_TOKEN_TTL_SECONDS = 24 * 60 * 60; // 24h
+const DEFAULT_TOKEN_TTL_SECONDS = 60 * 60; // 1h
 
 const base64UrlEncode = (value) =>
   Buffer.from(value)
@@ -29,6 +29,9 @@ const getConfiguredPasswords = () =>
 const getJwtSecret = () =>
   process.env.AUTH_JWT_SECRET || process.env.APP_PASSWORD || process.env.VITE_APP_PASSWORD || '';
 
+const isEmailAccessConfigured = () =>
+  Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 const timingSafeEqual = (a, b) => {
   const aBuffer = Buffer.from(a);
   const bBuffer = Buffer.from(b);
@@ -36,7 +39,9 @@ const timingSafeEqual = (a, b) => {
   return crypto.timingSafeEqual(aBuffer, bBuffer);
 };
 
-export const isAuthConfigured = () => getConfiguredPasswords().length > 0 && getJwtSecret().length > 0;
+export const isAuthConfigured = () =>
+  getJwtSecret().length > 0 &&
+  (getConfiguredPasswords().length > 0 || isEmailAccessConfigured());
 
 export const isPasswordValid = (candidate) => {
   const passwords = getConfiguredPasswords();
