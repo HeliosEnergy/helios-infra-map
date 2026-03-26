@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Layers, MapPin, Palette, Database } from 'lucide-react';
+import { Layers, MapPin, Palette, Database, Target } from 'lucide-react';
 import './TabNavigation.css';
 
 export interface TabItem {
@@ -107,6 +107,8 @@ const getTabIcon = (iconName: string): React.ReactElement | null => {
       return <Palette size={18} />;
     case 'database':
       return <Database size={18} />;
+    case 'target':
+      return <Target size={18} />;
     default:
       return null;
   }

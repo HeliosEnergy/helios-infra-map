@@ -4,6 +4,7 @@ import LayersFiltersTab from './LayersFiltersTab';
 import LegendTab from './LegendTab';
 import VisualizationTab from './VisualizationTab';
 import DataVisualizations from './DataVisualizations';
+import IcpTab from './IcpTab';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import type { PowerPlant } from '../models/PowerPlant';
 import { getCableCacheStats, clearCableCache } from '../utils/wfsDataLoader';
@@ -184,7 +185,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
   isCollapsed = false,
   onToggleCollapsed,
 }) => {
-  const [activeTab, setActiveTab] = useState<'layers' | 'legend' | 'visualization' | 'data'>('layers');
+  const [activeTab, setActiveTab] = useState<'layers' | 'legend' | 'visualization' | 'icp' | 'data'>('layers');
 
   // Define tabs
   const tabs: TabItem[] = useMemo(() => [
@@ -202,6 +203,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
       id: 'visualization',
       label: 'Visualization',
       icon: 'palette',
+    },
+    {
+      id: 'icp',
+      label: 'ICP',
+      icon: 'target',
     },
     {
       id: 'data',
@@ -296,6 +302,16 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 sizeByOption={sizeByOption}
                 setSizeByOption={setSizeByOption}
               />
+        );
+
+      case 'icp':
+        return (
+          <IcpTab
+            powerPlants={powerPlants}
+            selectedPlantIds={selectedPlantIds}
+            onPlantSelect={onPlantSelect}
+            onPlantDeselect={onPlantDeselect}
+          />
         );
 
       case 'data': {
