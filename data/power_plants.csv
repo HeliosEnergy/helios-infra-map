@@ -1,0 +1,7 @@
+id,name,output,outputDisplay,source,coordinates
+1,Hydro Plant 1,500,500 MW,Hydro,-73.5673;45.5017
+2,Gas Plant 1,300,300 MW,Gas,-79.3832;43.6532
+3,Wind Farm 1,150,150 MW,Wind,-114.0708;51.0447
+4,Nuclear Plant 1,1000,1000 MW,Nuclear,-75.6972;45.4215
+5,Coal Plant 1,400,400 MW,Coal,-97.1470;49.8844
+6,Solar Farm 1,75,75 MW,Solar,-123.1207;49.2827

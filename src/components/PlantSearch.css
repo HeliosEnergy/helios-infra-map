@@ -1,0 +1,225 @@
+.plant-search-container {
+  position: relative;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.selected-plants-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.plant-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #007bff;
+  color: white;
+  border-radius: 16px;
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.dark .plant-chip {
+  background: #1a73e8;
+}
+
+.chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.chip-remove:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.clear-selection-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.dark .clear-selection-btn {
+  color: #64b5f6;
+}
+
+.plant-search-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.plant-search-input {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #333;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.plant-search-input:focus {
+  outline: 2px solid #007bff;
+  outline-offset: -2px;
+  background: white;
+  border-color: #007bff;
+}
+
+.dark .plant-search-input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ccc;
+}
+
+.dark .plant-search-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #64b5f6;
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 18px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.clear-search-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #666;
+}
+
+.dark .clear-search-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+}
+
+.plant-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  box-sizing: border-box;
+}
+
+.dark .plant-search-dropdown {
+  background: #2d2d2d;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.plant-result-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plant-result-item:hover,
+.plant-result-item.selected {
+  background: rgba(0, 123, 255, 0.1);
+}
+
+.dark .plant-result-item:hover,
+.dark .plant-result-item.selected {
+  background: rgba(26, 115, 232, 0.2);
+}
+
+.plant-name {
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dark .plant-name {
+  color: #ccc;
+}
+
+.plant-source,
+.plant-output {
+  font-size: 12px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dark .plant-source,
+.dark .plant-output {
+  color: #aaa;
+}
+
+.plant-search-no-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 12px;
+  color: #666;
+  font-size: 14px;
+  z-index: 1000;
+  box-sizing: border-box;
+}
+
+.dark .plant-search-no-results {
+  background: #2d2d2d;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #aaa;
+}

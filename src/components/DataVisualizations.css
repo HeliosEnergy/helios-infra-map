@@ -1,0 +1,201 @@
+.data-analysis-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  max-width: 320px;
+  overflow-x: hidden;
+}
+
+.data-loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.analysis-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dark .analysis-section {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  text-align: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 4px;
+}
+
+.dark .section-title {
+  color: #ccc;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.chart-container {
+  width: 100%;
+  height: auto;
+  min-height: 120px;
+}
+
+/* Responsive container adjustments */
+.chart-container .recharts-wrapper {
+  margin: 0 auto;
+}
+
+/* Custom tooltip styling */
+.chart-container .recharts-tooltip-wrapper {
+  outline: none;
+}
+
+.chart-container .recharts-default-tooltip {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  font-size: 11px !important;
+}
+
+.dark .chart-container .recharts-default-tooltip {
+  background: rgba(33, 33, 33, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ccc !important;
+}
+
+/* Axis styling */
+.chart-container .recharts-cartesian-axis-tick-value {
+  font-size: 9px !important;
+  fill: #666 !important;
+}
+
+.dark .chart-container .recharts-cartesian-axis-tick-value {
+  fill: #aaa !important;
+}
+
+/* Legend styling */
+.chart-container .recharts-legend-item-text {
+  font-size: 10px !important;
+}
+
+/* Pie chart label adjustments */
+.chart-container .recharts-pie-label-text {
+  font-size: 9px !important;
+  font-weight: 500 !important;
+}
+
+/* Bar chart adjustments */
+.chart-container .recharts-bar {
+  transition: opacity 0.2s ease;
+}
+
+.chart-container .recharts-bar:hover {
+  opacity: 0.8;
+}
+
+/* Specialized analysis sections */
+.reliability-section {
+  background: rgba(0, 196, 159, 0.05);
+  border-color: rgba(0, 196, 159, 0.2);
+}
+
+.excess-section {
+  background: rgba(255, 187, 40, 0.05);
+  border-color: rgba(255, 187, 40, 0.2);
+}
+
+.efficiency-section {
+  background: rgba(255, 128, 66, 0.05);
+  border-color: rgba(255, 128, 66, 0.2);
+}
+
+/* Export section */
+.export-section {
+  background: rgba(0, 123, 255, 0.05);
+  border-color: rgba(0, 123, 255, 0.2);
+}
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-btn {
+  padding: 6px 8px;
+  background: #007bff;
+  color: white;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.export-btn:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.export-btn:active {
+  transform: translateY(1px);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .data-analysis-dashboard {
+    padding: 8px;
+    gap: 12px;
+  }
+
+  .analysis-section {
+    padding: 6px;
+  }
+
+  .section-title {
+    font-size: 11px;
+  }
+
+  .chart-container {
+    min-height: 100px;
+  }
+
+  .export-btn {
+    font-size: 10px;
+    padding: 5px 6px;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .analysis-section {
+    border-width: 2px;
+  }
+
+  .export-btn {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .export-btn {
+    transition: none;
+  }
+
+  .chart-container .recharts-bar {
+    transition: none;
+  }
+}
