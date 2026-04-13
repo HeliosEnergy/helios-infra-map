@@ -1,14 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PowerPlant } from '../models/PowerPlant';
+import { fetchApolloContacts, type Contact } from '../utils/apolloApi';
 
 type IcpTabProps = {
   powerPlants: PowerPlant[];
   selectedPlantIds: Set<string>;
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
+  selectedStates: Set<string>;
+  onSelectedStatesChange: (next: Set<string>) => void;
+  excessThresholdMw: number;
+  onExcessThresholdMwChange: (next: number) => void;
 };
-
-const DEFAULT_STATES = ['UT', 'TX', 'CA'] as const;
 
 const getPlantState = (plant: PowerPlant): string => {
   const raw = plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '';
@@ -42,14 +45,27 @@ const downloadTextFile = (filename: string, text: string, mimeType = 'text/csv;c
   URL.revokeObjectURL(url);
 };
 
-const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantSelect, onPlantDeselect }) => {
-  const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set(DEFAULT_STATES));
+const IcpTab: React.FC<IcpTabProps> = ({
+  powerPlants,
+  selectedPlantIds,
+  onPlantSelect,
+  onPlantDeselect,
+  selectedStates,
+  onSelectedStatesChange,
+  excessThresholdMw,
+  onExcessThresholdMwChange,
+}) => {
   const [stateSearch, setStateSearch] = useState<string>('');
   const [isStatesOpen, setIsStatesOpen] = useState<boolean>(false);
-  const [excessThresholdMw, setExcessThresholdMw] = useState<number>(10);
-  const [rowsToShow, setRowsToShow] = useState<number>(20);
+  const [rowsToShow, setRowsToShow] = useState<number>(10);
+  const [customRowsToShow, setCustomRowsToShow] = useState<string>('10');
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const statesDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Apollo contacts state
+  const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
+  const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
+  const [contactsError, setContactsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isStatesOpen) return;
@@ -69,6 +85,10 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
       document.removeEventListener('mousedown', onMouseDown);
     };
   }, [isStatesOpen]);
+
+  useEffect(() => {
+    setCustomRowsToShow(String(rowsToShow));
+  }, [rowsToShow]);
 
   const availableStates = useMemo(() => {
     const states = new Set<string>();
@@ -134,24 +154,20 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
   }, [selectedCandidateRows, rowsToShow]);
 
   const toggleState = (state: string) => {
-    setSelectedStates((prev) => {
-      const next = new Set(prev);
-      if (next.has(state)) next.delete(state);
-      else next.add(state);
-      return next;
-    });
+    const next = new Set(selectedStates);
+    if (next.has(state)) next.delete(state);
+    else next.add(state);
+    onSelectedStatesChange(next);
   };
 
   const selectAllVisibleStates = () => {
-    setSelectedStates((prev) => {
-      const next = new Set(prev);
-      visibleStates.forEach((st) => next.add(st));
-      return next;
-    });
+    const next = new Set(selectedStates);
+    visibleStates.forEach((st) => next.add(st));
+    onSelectedStatesChange(next);
   };
 
   const clearAllStates = () => {
-    setSelectedStates(new Set());
+    onSelectedStatesChange(new Set());
   };
 
   const selectAllCandidates = () => {
@@ -163,6 +179,65 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
       if (selectedPlantIds.has(row.plant.id)) onPlantDeselect(row.plant.id);
     });
   };
+
+  // Fetch contacts from Apollo for selected candidates
+  const fetchContactsForSelected = useCallback(async () => {
+    if (downloadableSelectedRows.length === 0) return;
+
+    setIsLoadingContacts(true);
+    setContactsError(null);
+
+    // Collect unique company names (owners and operators)
+    const companies = new Set<string>();
+    downloadableSelectedRows.forEach(({ plant }) => {
+      const owner = getOwner(plant);
+      const operator = getOperator(plant);
+      if (owner) companies.add(owner);
+      if (operator && operator !== owner) companies.add(operator);
+    });
+
+    try {
+      const results = await fetchApolloContacts([...companies]);
+      setContactsByCompany((prev) => ({ ...prev, ...results }));
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      setContactsError(error instanceof Error ? error.message : 'Failed to fetch contacts');
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, [downloadableSelectedRows]);
+
+  // Helper to get contacts for a plant
+  const getContactsForPlant = useCallback(
+    (plant: PowerPlant): Contact[] => {
+      const owner = getOwner(plant);
+      const operator = getOperator(plant);
+      const contacts: Contact[] = [];
+
+      if (owner && contactsByCompany[owner]) {
+        contacts.push(...contactsByCompany[owner]);
+      }
+      if (operator && operator !== owner && contactsByCompany[operator]) {
+        contacts.push(...contactsByCompany[operator]);
+      }
+
+      return contacts;
+    },
+    [contactsByCompany]
+  );
+
+  // Check if we have contacts for all selected plants
+  const hasContactsForAllSelected = useMemo(() => {
+    if (downloadableSelectedRows.length === 0) return false;
+
+    return downloadableSelectedRows.every(({ plant }) => {
+      const owner = getOwner(plant);
+      const operator = getOperator(plant);
+      const hasOwnerContacts = !owner || contactsByCompany[owner] !== undefined;
+      const hasOperatorContacts = !operator || operator === owner || contactsByCompany[operator] !== undefined;
+      return hasOwnerContacts && hasOperatorContacts;
+    });
+  }, [downloadableSelectedRows, contactsByCompany]);
 
   const downloadSelectedCsv = () => {
     if (downloadableSelectedRows.length === 0) return;
@@ -180,11 +255,28 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
       'plant_url',
       'latitude',
       'longitude',
+      'contact_1_name',
+      'contact_1_title',
+      'contact_1_email',
+      'contact_1_linkedin',
+      'contact_1_company',
+      'contact_2_name',
+      'contact_2_title',
+      'contact_2_email',
+      'contact_2_linkedin',
+      'contact_2_company',
+      'contact_3_name',
+      'contact_3_title',
+      'contact_3_email',
+      'contact_3_linkedin',
+      'contact_3_company',
     ];
 
     const lines: string[] = [header.map(toCsvValue).join(',')];
     downloadableSelectedRows.forEach(({ plant, available, used, excess, capacityFactor }) => {
       const [lon, lat] = plant.coordinates;
+      const contacts = getContactsForPlant(plant);
+
       const row = [
         plant.id,
         plant.name,
@@ -198,6 +290,24 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
         getPlantUrl(plant),
         Number.isFinite(lat) ? lat.toFixed(6) : '',
         Number.isFinite(lon) ? lon.toFixed(6) : '',
+        // Contact 1
+        contacts[0]?.name || '',
+        contacts[0]?.title || '',
+        contacts[0]?.email || '',
+        contacts[0]?.linkedin_url || '',
+        contacts[0]?.company || '',
+        // Contact 2
+        contacts[1]?.name || '',
+        contacts[1]?.title || '',
+        contacts[1]?.email || '',
+        contacts[1]?.linkedin_url || '',
+        contacts[1]?.company || '',
+        // Contact 3
+        contacts[2]?.name || '',
+        contacts[2]?.title || '',
+        contacts[2]?.email || '',
+        contacts[2]?.linkedin_url || '',
+        contacts[2]?.company || '',
       ];
       lines.push(row.map(toCsvValue).join(','));
     });
@@ -260,7 +370,7 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
                     <button
                       type="button"
                       className="clear-cache-btn"
-                      onClick={() => setSelectedStates(new Set(DEFAULT_STATES))}
+                      onClick={() => onSelectedStatesChange(new Set(['UT', 'TX', 'CA']))}
                     >
                       Reset to UT/TX/CA
                     </button>
@@ -304,14 +414,14 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
               min={0}
               step={1}
               value={excessThresholdMw}
-              onChange={(e) => setExcessThresholdMw(Number(e.target.value))}
+              onChange={(e) => onExcessThresholdMwChange(Number(e.target.value))}
               style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
             />
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-              <span>Rows to show</span>
+              <span>View more</span>
               <select
                 value={rowsToShow}
                 onChange={(e) => setRowsToShow(Number(e.target.value))}
@@ -325,6 +435,26 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
                 <option value={0}>All</option>
               </select>
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              <span>Custom</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={customRowsToShow}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setCustomRowsToShow(raw);
+                  if (raw.trim() === '') return;
+                  const next = Number(raw);
+                  if (!Number.isFinite(next) || next < 0) return;
+                  setRowsToShow(Math.floor(next));
+                }}
+                style={{ width: 92, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
+                aria-label="Custom rows to show"
+              />
+            </label>
             <button type="button" className="clear-cache-btn" onClick={selectAllCandidates}>
               Select visible ({displayedCandidates.length})
             </button>
@@ -334,12 +464,29 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
             <button
               type="button"
               className="clear-cache-btn"
+              onClick={fetchContactsForSelected}
+              disabled={downloadableSelectedRows.length === 0 || isLoadingContacts}
+              title={
+                downloadableSelectedRows.length === 0
+                  ? 'Select at least 1 displayed plant to fetch contacts'
+                  : isLoadingContacts
+                  ? 'Loading contacts...'
+                  : 'Fetch contacts from Apollo.io'
+              }
+            >
+              {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${downloadableSelectedRows.length})`}
+            </button>
+            <button
+              type="button"
+              className="clear-cache-btn"
               onClick={downloadSelectedCsv}
               disabled={downloadableSelectedRows.length === 0}
               title={
                 downloadableSelectedRows.length === 0
                   ? 'Select at least 1 displayed plant to export'
-                  : 'Download CSV'
+                  : hasContactsForAllSelected
+                  ? 'Download CSV with contacts'
+                  : 'Download CSV (fetch contacts first for contact info)'
               }
             >
               Download CSV ({downloadableSelectedRows.length})
@@ -350,6 +497,18 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
             Showing {candidates.length} plants in {Array.from(selectedStates).sort().join(', ')} with excess ≥{' '}
             {excessThresholdMw} MW.
           </div>
+
+          {contactsError && (
+            <div style={{ fontSize: 12, color: '#dc2626', padding: '8px 12px', background: 'rgba(220, 38, 38, 0.1)', borderRadius: 6 }}>
+              {contactsError}
+            </div>
+          )}
+
+          {hasContactsForAllSelected && downloadableSelectedRows.length > 0 && (
+            <div style={{ fontSize: 12, color: '#059669', padding: '8px 12px', background: 'rgba(5, 150, 105, 0.1)', borderRadius: 6 }}>
+              ✓ Contacts loaded for {downloadableSelectedRows.length} selected plant(s). Ready to download CSV with contact info.
+            </div>
+          )}
 
           <div style={{ display: 'grid', gap: 8 }}>
             <button
@@ -419,7 +578,7 @@ const IcpTab: React.FC<IcpTabProps> = ({ powerPlants, selectedPlantIds, onPlantS
                 ))}
                 {rowsToShow > 0 && candidates.length > rowsToShow && (
                   <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    Showing first {rowsToShow} results out of {candidates.length}. Increase “Rows to show” to view more.
+                    Showing first {rowsToShow} results out of {candidates.length}. Increase “View more” to view more.
                   </div>
                 )}
               </div>

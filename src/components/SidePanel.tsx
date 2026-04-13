@@ -80,6 +80,11 @@ interface SidePanelProps {
 
   // Data
   powerPlants: PowerPlant[];
+  icpPowerPlants: PowerPlant[];
+  icpSelectedStates: Set<string>;
+  onIcpSelectedStatesChange: (next: Set<string>) => void;
+  icpExcessThresholdMw: number;
+  onIcpExcessThresholdMwChange: (next: number) => void;
   allSourcesInData: string[];
   powerPlantCounts?: Record<string, number>;
 
@@ -166,6 +171,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
   // Data
   powerPlants,
+  icpPowerPlants,
+  icpSelectedStates,
+  onIcpSelectedStatesChange,
+  icpExcessThresholdMw,
+  onIcpExcessThresholdMwChange,
   allSourcesInData,
   powerPlantCounts,
 
@@ -307,10 +317,14 @@ const SidePanel: React.FC<SidePanelProps> = ({
       case 'icp':
         return (
           <IcpTab
-            powerPlants={powerPlants}
+            powerPlants={icpPowerPlants}
             selectedPlantIds={selectedPlantIds}
             onPlantSelect={onPlantSelect}
             onPlantDeselect={onPlantDeselect}
+            selectedStates={icpSelectedStates}
+            onSelectedStatesChange={onIcpSelectedStatesChange}
+            excessThresholdMw={icpExcessThresholdMw}
+            onExcessThresholdMwChange={onIcpExcessThresholdMwChange}
           />
         );
 

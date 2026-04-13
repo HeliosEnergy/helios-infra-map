@@ -206,6 +206,11 @@ function getCountryName(countryCode: string): string {
   return countryNames[countryCode] || countryCode;
 }
 
+const getPlantState = (plant: PowerPlant): string => {
+  const raw = plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '';
+  return String(raw).trim().toUpperCase();
+};
+
 // Mapbox token from environment variables
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HERE';
 
@@ -306,6 +311,9 @@ function App() {
   const [filteredStatuses, setFilteredStatuses] = useState<Set<string>>(new Set());
   const [isFilterStateReady, setIsFilterStateReady] = useState(false);
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
+
+  const [icpSelectedStates, setIcpSelectedStates] = useState<Set<string>>(new Set(['UT', 'TX', 'CA']));
+  const [icpExcessThresholdMw, setIcpExcessThresholdMw] = useState<number>(10);
 
   const [viewState, setViewState] = useState({
     longitude: -95,
@@ -551,6 +559,26 @@ function App() {
     selectedPlantIds,
   });
 
+  const icpPowerPlants = useMemo(
+    () => (showOnlyNearbyPlants ? nearbyPlants : powerPlants),
+    [showOnlyNearbyPlants, nearbyPlants, powerPlants]
+  );
+
+  const icpMapFilteredPowerPlants = useMemo(() => {
+    const threshold = Number.isFinite(icpExcessThresholdMw) ? icpExcessThresholdMw : 0;
+    const states = icpSelectedStates;
+
+    return filteredPowerPlants.filter((plant) => {
+      if (plant.country !== 'US') return true;
+      const st = getPlantState(plant);
+      if (!st || !states.has(st)) return false;
+      const available = plant.output || 0;
+      const used = plant.usedCapacity || 0;
+      const excess = available - used;
+      return excess >= threshold;
+    });
+  }, [filteredPowerPlants, icpSelectedStates, icpExcessThresholdMw]);
+
   const { fiberLayer, hifldLayer } = useVectorTileLayers({
     showFiberCables,
     showFiberOverview,
@@ -648,7 +676,7 @@ function App() {
     locationCircle,
     showRadiusCircle,
     showPowerPlants,
-    filteredPowerPlants,
+    filteredPowerPlants: icpMapFilteredPowerPlants,
     sizeByOption,
     sizeMultiplier,
     capacityWeight,
@@ -873,6 +901,11 @@ function App() {
         sizeByOption={sizeByOption}
         setSizeByOption={setSizeByOption}
         powerPlants={powerPlants}
+        icpPowerPlants={icpPowerPlants}
+        icpSelectedStates={icpSelectedStates}
+        onIcpSelectedStatesChange={setIcpSelectedStates}
+        icpExcessThresholdMw={icpExcessThresholdMw}
+        onIcpExcessThresholdMwChange={setIcpExcessThresholdMw}
         allSourcesInData={allSourcesInData}
         powerPlantCounts={powerPlantCounts}
         selectedPlantIds={selectedPlantIds}
