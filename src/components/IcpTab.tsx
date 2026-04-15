@@ -11,6 +11,20 @@ type IcpTabProps = {
   onSelectedStatesChange: (next: Set<string>) => void;
   excessThresholdMw: number;
   onExcessThresholdMwChange: (next: number) => void;
+  sectorFilter:
+    | 'all'
+    | 'independent'
+    | 'electric_utility'
+    | 'commercial'
+    | 'other';
+  onSectorFilterChange: (
+    next:
+      | 'all'
+      | 'independent'
+      | 'electric_utility'
+      | 'commercial'
+      | 'other'
+  ) => void;
 };
 
 const getPlantState = (plant: PowerPlant): string => {
@@ -47,6 +61,24 @@ const downloadTextFile = (filename: string, text: string, mimeType = 'text/csv;c
 
 const ROWS_TO_SHOW_PRESETS = [10, 20, 50, 100, 200, 0] as const;
 
+const getUsSector = (plant: PowerPlant): string =>
+  plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
+
+const classifyUsSector = (
+  sector: string
+):
+  | 'independent'
+  | 'electric_utility'
+  | 'commercial'
+  | 'other' => {
+  const s = sector.toUpperCase();
+  if (!s) return 'other';
+  if (s.includes('IPP')) return 'independent';
+  if (s.includes('ELECTRIC UTILITY')) return 'electric_utility';
+  if (s.includes('COMMERCIAL') || s.includes('INDUSTRIAL')) return 'commercial';
+  return 'other';
+};
+
 const IcpTab: React.FC<IcpTabProps> = ({
   powerPlants,
   selectedPlantIds,
@@ -56,6 +88,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
   onSelectedStatesChange,
   excessThresholdMw,
   onExcessThresholdMwChange,
+  sectorFilter,
+  onSectorFilterChange,
 }) => {
   const [stateSearch, setStateSearch] = useState<string>('');
   const [isStatesOpen, setIsStatesOpen] = useState<boolean>(false);
@@ -121,6 +155,11 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
     return powerPlants
       .filter((plant) => plant.country === 'US')
+      .filter((plant) => {
+        if (sectorFilter === 'all') return true;
+        const category = classifyUsSector(getUsSector(plant));
+        return category === sectorFilter;
+      })
       .filter((plant) => {
         const st = getPlantState(plant);
         if (st.length === 0) return false;
@@ -416,6 +455,30 @@ const IcpTab: React.FC<IcpTabProps> = ({
               onChange={(e) => onExcessThresholdMwChange(Number(e.target.value))}
               style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
             />
+          </div>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ fontWeight: 600 }}>Sector (US)</div>
+            <select
+              value={sectorFilter}
+              onChange={(e) =>
+                onSectorFilterChange(
+                  e.target.value as
+                    | 'all'
+                    | 'independent'
+                    | 'electric_utility'
+                    | 'commercial'
+                    | 'other'
+                )
+              }
+              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
+            >
+              <option value="all">All</option>
+              <option value="independent">Independent providers</option>
+              <option value="electric_utility">Electric utility</option>
+              <option value="commercial">Commercial / industrial</option>
+              <option value="other">Other / unknown</option>
+            </select>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

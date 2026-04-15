@@ -85,6 +85,20 @@ interface SidePanelProps {
   onIcpSelectedStatesChange: (next: Set<string>) => void;
   icpExcessThresholdMw: number;
   onIcpExcessThresholdMwChange: (next: number) => void;
+  icpSectorFilter:
+    | 'all'
+    | 'independent'
+    | 'electric_utility'
+    | 'commercial'
+    | 'other';
+  onIcpSectorFilterChange: (
+    next:
+      | 'all'
+      | 'independent'
+      | 'electric_utility'
+      | 'commercial'
+      | 'other'
+  ) => void;
   allSourcesInData: string[];
   powerPlantCounts?: Record<string, number>;
 
@@ -176,6 +190,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onIcpSelectedStatesChange,
   icpExcessThresholdMw,
   onIcpExcessThresholdMwChange,
+  icpSectorFilter,
+  onIcpSectorFilterChange,
   allSourcesInData,
   powerPlantCounts,
 
@@ -325,6 +341,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
             onSelectedStatesChange={onIcpSelectedStatesChange}
             excessThresholdMw={icpExcessThresholdMw}
             onExcessThresholdMwChange={onIcpExcessThresholdMwChange}
+            sectorFilter={icpSectorFilter}
+            onSectorFilterChange={onIcpSectorFilterChange}
           />
         );
 

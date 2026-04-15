@@ -211,6 +211,24 @@ const getPlantState = (plant: PowerPlant): string => {
   return String(raw).trim().toUpperCase();
 };
 
+const getUsSector = (plant: PowerPlant): string =>
+  plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
+
+const classifyUsSector = (
+  sector: string
+):
+  | 'independent'
+  | 'electric_utility'
+  | 'commercial'
+  | 'other' => {
+  const s = sector.toUpperCase();
+  if (!s) return 'other';
+  if (s.includes('IPP')) return 'independent';
+  if (s.includes('ELECTRIC UTILITY')) return 'electric_utility';
+  if (s.includes('COMMERCIAL') || s.includes('INDUSTRIAL')) return 'commercial';
+  return 'other';
+};
+
 // Mapbox token from environment variables
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HERE';
 
@@ -316,6 +334,13 @@ function App() {
   // Convention: empty set means "all states" (no state filter applied).
   const [icpSelectedStates, setIcpSelectedStates] = useState<Set<string>>(new Set());
   const [icpExcessThresholdMw, setIcpExcessThresholdMw] = useState<number>(0);
+  const [icpSectorFilter, setIcpSectorFilter] = useState<
+    | 'all'
+    | 'independent'
+    | 'electric_utility'
+    | 'commercial'
+    | 'other'
+  >('all');
 
   const [viewState, setViewState] = useState({
     longitude: -95,
@@ -575,12 +600,16 @@ function App() {
       const st = getPlantState(plant);
       if (!st) return false;
       if (states.size > 0 && !states.has(st)) return false;
+      if (icpSectorFilter !== 'all') {
+        const category = classifyUsSector(getUsSector(plant));
+        if (category !== icpSectorFilter) return false;
+      }
       const available = plant.output || 0;
       const used = plant.usedCapacity || 0;
       const excess = available - used;
       return excess >= threshold;
     });
-  }, [filteredPowerPlants, icpSelectedStates, icpExcessThresholdMw]);
+  }, [filteredPowerPlants, icpSelectedStates, icpExcessThresholdMw, icpSectorFilter]);
 
   const { fiberLayer, hifldLayer } = useVectorTileLayers({
     showFiberCables,
@@ -909,6 +938,8 @@ function App() {
         onIcpSelectedStatesChange={setIcpSelectedStates}
         icpExcessThresholdMw={icpExcessThresholdMw}
         onIcpExcessThresholdMwChange={setIcpExcessThresholdMw}
+        icpSectorFilter={icpSectorFilter}
+        onIcpSectorFilterChange={setIcpSectorFilter}
         allSourcesInData={allSourcesInData}
         powerPlantCounts={powerPlantCounts}
         selectedPlantIds={selectedPlantIds}
