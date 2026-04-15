@@ -312,8 +312,10 @@ function App() {
   const [isFilterStateReady, setIsFilterStateReady] = useState(false);
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
 
-  const [icpSelectedStates, setIcpSelectedStates] = useState<Set<string>>(new Set(['UT', 'TX', 'CA']));
-  const [icpExcessThresholdMw, setIcpExcessThresholdMw] = useState<number>(10);
+  // ICP defaults: all states + 0 excess threshold
+  // Convention: empty set means "all states" (no state filter applied).
+  const [icpSelectedStates, setIcpSelectedStates] = useState<Set<string>>(new Set());
+  const [icpExcessThresholdMw, setIcpExcessThresholdMw] = useState<number>(0);
 
   const [viewState, setViewState] = useState({
     longitude: -95,
@@ -571,7 +573,8 @@ function App() {
     return filteredPowerPlants.filter((plant) => {
       if (plant.country !== 'US') return true;
       const st = getPlantState(plant);
-      if (!st || !states.has(st)) return false;
+      if (!st) return false;
+      if (states.size > 0 && !states.has(st)) return false;
       const available = plant.output || 0;
       const used = plant.usedCapacity || 0;
       const excess = available - used;

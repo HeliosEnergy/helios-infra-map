@@ -45,6 +45,8 @@ const downloadTextFile = (filename: string, text: string, mimeType = 'text/csv;c
   URL.revokeObjectURL(url);
 };
 
+const ROWS_TO_SHOW_PRESETS = [10, 20, 50, 100, 200, 0] as const;
+
 const IcpTab: React.FC<IcpTabProps> = ({
   powerPlants,
   selectedPlantIds,
@@ -58,7 +60,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [stateSearch, setStateSearch] = useState<string>('');
   const [isStatesOpen, setIsStatesOpen] = useState<boolean>(false);
   const [rowsToShow, setRowsToShow] = useState<number>(10);
-  const [customRowsToShow, setCustomRowsToShow] = useState<string>('10');
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -85,10 +86,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
       document.removeEventListener('mousedown', onMouseDown);
     };
   }, [isStatesOpen]);
-
-  useEffect(() => {
-    setCustomRowsToShow(String(rowsToShow));
-  }, [rowsToShow]);
 
   const availableStates = useMemo(() => {
     const states = new Set<string>();
@@ -119,14 +116,16 @@ const IcpTab: React.FC<IcpTabProps> = ({
   }, [visibleStates, selectedStates]);
 
   const candidates = useMemo(() => {
-    const threshold = Number.isFinite(excessThresholdMw) ? excessThresholdMw : 10;
+    const threshold = Number.isFinite(excessThresholdMw) ? excessThresholdMw : 0;
     const states = selectedStates;
 
     return powerPlants
       .filter((plant) => plant.country === 'US')
       .filter((plant) => {
         const st = getPlantState(plant);
-        return st.length > 0 && states.has(st);
+        if (st.length === 0) return false;
+        if (states.size === 0) return true;
+        return states.has(st);
       })
       .map((plant) => {
         const available = plant.output || 0;
@@ -333,7 +332,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                 aria-label="Select states"
                 style={{ width: '100%' }}
               >
-                <span>Select states ({selectedStates.size} selected)</span>
+                <span>Select states ({selectedStates.size === 0 ? 'All' : `${selectedStates.size} selected`})</span>
                 <span className="dropdown-arrow">{isStatesOpen ? '▲' : '▼'}</span>
               </button>
 
@@ -370,9 +369,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     <button
                       type="button"
                       className="clear-cache-btn"
-                      onClick={() => onSelectedStatesChange(new Set(['UT', 'TX', 'CA']))}
+                      onClick={() => onSelectedStatesChange(new Set())}
                     >
-                      Reset to UT/TX/CA
+                      Reset to all states
                     </button>
                   </div>
 
@@ -424,36 +423,32 @@ const IcpTab: React.FC<IcpTabProps> = ({
               <span>View more</span>
               <select
                 value={rowsToShow}
-                onChange={(e) => setRowsToShow(Number(e.target.value))}
-                style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-                <option value={0}>All</option>
-              </select>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-              <span>Custom</span>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                inputMode="numeric"
-                value={customRowsToShow}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  setCustomRowsToShow(raw);
-                  if (raw.trim() === '') return;
-                  const next = Number(raw);
-                  if (!Number.isFinite(next) || next < 0) return;
-                  setRowsToShow(Math.floor(next));
+                  if (raw === '__custom__') {
+                    const current = rowsToShow > 0 ? String(rowsToShow) : '';
+                    const input = window.prompt('Enter rows to show (0 = All).', current);
+                    if (input == null) return;
+                    const next = Number(input);
+                    if (!Number.isFinite(next) || next < 0) return;
+                    setRowsToShow(Math.floor(next));
+                    return;
+                  }
+
+                  setRowsToShow(Number(raw));
                 }}
-                style={{ width: 92, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
-                aria-label="Custom rows to show"
-              />
+                style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.15)' }}
+              >
+                {ROWS_TO_SHOW_PRESETS.map((value) => (
+                  <option key={value} value={value}>
+                    {value === 0 ? 'All' : value}
+                  </option>
+                ))}
+                {!ROWS_TO_SHOW_PRESETS.includes(rowsToShow as (typeof ROWS_TO_SHOW_PRESETS)[number]) && (
+                  <option value={rowsToShow}>Custom ({rowsToShow})</option>
+                )}
+                <option value="__custom__">Custom…</option>
+              </select>
             </label>
             <button type="button" className="clear-cache-btn" onClick={selectAllCandidates}>
               Select visible ({displayedCandidates.length})
