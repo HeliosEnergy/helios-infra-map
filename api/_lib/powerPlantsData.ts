@@ -78,6 +78,7 @@ const RAW_FIELDS_TO_KEEP = [
   'Address',
   'Zip Code / Postal Code',
   'Plant URL',
+  'Utility URL',
 ] as const;
 
 let datasetCache: { data: PowerPlant[]; timestamp: number } | null = null;
@@ -304,6 +305,7 @@ const parseUsEiaPlantsCsv = (csvText: string): PowerPlant[] => {
         Address: entry['Plant Address'] || '',
         'Zip Code / Postal Code': entry['Plant Zip'] || '',
         'Plant URL': entry['Plant URL'] || '',
+        'Utility URL': entry['Utility URL'] || '',
       },
     });
   }

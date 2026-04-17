@@ -5,6 +5,7 @@ export type Contact = {
   title: string;
   email: string;
   linkedin_url: string;
+  phone?: string;
   company: string;
 };
 

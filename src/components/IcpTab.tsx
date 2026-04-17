@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PowerPlant } from '../models/PowerPlant';
-import { fetchApolloContacts, type Contact } from '../utils/apolloApi';
+import type { Contact } from '../utils/apolloApi';
+import { fetchPublicContacts } from '../utils/publicContactsApi';
+import { askPlantResearch } from '../utils/plantResearchApi';
 
 type IcpTabProps = {
   powerPlants: PowerPlant[];
@@ -41,6 +43,9 @@ const getOperator = (plant: PowerPlant): string =>
 const getPlantUrl = (plant: PowerPlant): string =>
   String(plant.rawData?.['Plant URL'] || '').trim();
 
+const getCompanyWebsite = (plant: PowerPlant): string =>
+  String(plant.rawData?.['Utility URL'] || '').trim();
+
 const toCsvValue = (value: string | number | null | undefined): string => {
   const raw = value == null ? '' : String(value);
   const escaped = raw.replace(/"/g, '""');
@@ -59,7 +64,49 @@ const downloadTextFile = (filename: string, text: string, mimeType = 'text/csv;c
   URL.revokeObjectURL(url);
 };
 
-const ROWS_TO_SHOW_PRESETS = [10, 20, 50, 100, 200, 0] as const;
+const getHostname = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '');
+  } catch {
+    return url;
+  }
+};
+
+const renderAnswerBlock = (answer: string) => {
+  const cleaned = answer
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+
+  const lines = cleaned
+    .split('\n')
+    .map((l) => l.trimEnd())
+    .filter((l, idx, arr) => !(l.trim().length === 0 && arr[idx - 1]?.trim().length === 0));
+
+  const bulletLines = lines.filter((l) => /^[-*•]\s+/.test(l.trim()));
+  const nonBulletLines = lines.filter((l) => !/^[-*•]\s+/.test(l.trim()));
+
+  if (bulletLines.length >= 2 && nonBulletLines.length <= 2) {
+    return (
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.5, color: '#111827' }}>
+        {bulletLines.map((l, i) => (
+          <li key={i}>{l.replace(/^[-*•]\s+/, '')}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5, color: '#111827' }}>
+      {cleaned}
+    </div>
+  );
+};
+
+const ROWS_TO_SHOW_PRESETS = [1, 10, 20, 50, 100, 200, 0] as const;
 
 const getUsSector = (plant: PowerPlant): string =>
   plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
@@ -95,12 +142,19 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [isStatesOpen, setIsStatesOpen] = useState<boolean>(false);
   const [rowsToShow, setRowsToShow] = useState<number>(10);
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
+  const [isPlantResearchOpen, setIsPlantResearchOpen] = useState<boolean>(false);
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Apollo contacts state
   const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
   const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
+
+  const [plantQuestion, setPlantQuestion] = useState<string>('');
+  const [plantAnswer, setPlantAnswer] = useState<string>('');
+  const [plantCitations, setPlantCitations] = useState<string[]>([]);
+  const [plantResearchError, setPlantResearchError] = useState<string | null>(null);
+  const [isLoadingPlantResearch, setIsLoadingPlantResearch] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isStatesOpen) return;
@@ -191,6 +245,11 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return selectedCandidateRows.slice(0, rowsToShow);
   }, [selectedCandidateRows, rowsToShow]);
 
+  const selectedPlantForResearch = useMemo(() => {
+    if (selectedCandidateRows.length !== 1) return null;
+    return selectedCandidateRows[0]?.plant || null;
+  }, [selectedCandidateRows]);
+
   const toggleState = (state: string) => {
     const next = new Set(selectedStates);
     if (next.has(state)) next.delete(state);
@@ -218,24 +277,29 @@ const IcpTab: React.FC<IcpTabProps> = ({
     });
   };
 
-  // Fetch contacts from Apollo for selected candidates
-  const fetchContactsForSelected = useCallback(async () => {
+  // Fetch contacts from public sources (free) for selected candidates
+  const fetchPublicContactsForSelected = useCallback(async () => {
     if (downloadableSelectedRows.length === 0) return;
 
     setIsLoadingContacts(true);
     setContactsError(null);
 
-    // Collect unique company names (owners and operators)
-    const companies = new Set<string>();
+    const entries: { company: string; url?: string; plant_name: string; state: string; operator?: string }[] = [];
     downloadableSelectedRows.forEach(({ plant }) => {
       const owner = getOwner(plant);
       const operator = getOperator(plant);
-      if (owner) companies.add(owner);
-      if (operator && operator !== owner) companies.add(operator);
+      const url = getCompanyWebsite(plant);
+      const plantName = plant.name;
+      const state = getPlantState(plant);
+
+      if (owner) entries.push({ company: owner, url, plant_name: plantName, state, operator });
+      if (operator && operator !== owner) {
+        entries.push({ company: operator, url, plant_name: plantName, state, operator });
+      }
     });
 
     try {
-      const results = await fetchApolloContacts([...companies]);
+      const results = await fetchPublicContacts(entries);
       setContactsByCompany((prev) => ({ ...prev, ...results }));
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -244,6 +308,39 @@ const IcpTab: React.FC<IcpTabProps> = ({
       setIsLoadingContacts(false);
     }
   }, [downloadableSelectedRows]);
+
+  const runPlantResearch = useCallback(async () => {
+    if (!selectedPlantForResearch) return;
+    const prompt = plantQuestion.trim();
+    if (!prompt) return;
+
+    setIsLoadingPlantResearch(true);
+    setPlantResearchError(null);
+    setPlantAnswer('');
+    setPlantCitations([]);
+
+    try {
+      const plant = selectedPlantForResearch;
+      const owner = getOwner(plant);
+      const operator = getOperator(plant);
+      const websiteHint = getCompanyWebsite(plant) || getPlantUrl(plant);
+      const { answer, citations } = await askPlantResearch({
+        prompt: prompt.slice(0, 240),
+        plant_name: plant.name,
+        state: getPlantState(plant),
+        owner,
+        operator,
+        website_hint: websiteHint,
+      });
+      setPlantAnswer(answer);
+      setPlantCitations(Array.isArray(citations) ? citations : []);
+    } catch (error) {
+      console.error('Error running plant research:', error);
+      setPlantResearchError(error instanceof Error ? error.message : 'Failed to run plant research');
+    } finally {
+      setIsLoadingPlantResearch(false);
+    }
+  }, [plantQuestion, selectedPlantForResearch]);
 
   // Helper to get contacts for a plant
   const getContactsForPlant = useCallback(
@@ -291,23 +388,19 @@ const IcpTab: React.FC<IcpTabProps> = ({
       'owner',
       'operator',
       'plant_url',
+      'owner_website',
       'latitude',
       'longitude',
       'contact_1_name',
       'contact_1_title',
       'contact_1_email',
       'contact_1_linkedin',
-      'contact_1_company',
+      'contact_1_phone',
       'contact_2_name',
       'contact_2_title',
       'contact_2_email',
       'contact_2_linkedin',
-      'contact_2_company',
-      'contact_3_name',
-      'contact_3_title',
-      'contact_3_email',
-      'contact_3_linkedin',
-      'contact_3_company',
+      'contact_2_phone',
     ];
 
     const lines: string[] = [header.map(toCsvValue).join(',')];
@@ -326,6 +419,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
         getOwner(plant),
         getOperator(plant),
         getPlantUrl(plant),
+        getCompanyWebsite(plant),
         Number.isFinite(lat) ? lat.toFixed(6) : '',
         Number.isFinite(lon) ? lon.toFixed(6) : '',
         // Contact 1
@@ -333,19 +427,13 @@ const IcpTab: React.FC<IcpTabProps> = ({
         contacts[0]?.title || '',
         contacts[0]?.email || '',
         contacts[0]?.linkedin_url || '',
-        contacts[0]?.company || '',
+        contacts[0]?.phone || '',
         // Contact 2
         contacts[1]?.name || '',
         contacts[1]?.title || '',
         contacts[1]?.email || '',
         contacts[1]?.linkedin_url || '',
-        contacts[1]?.company || '',
-        // Contact 3
-        contacts[2]?.name || '',
-        contacts[2]?.title || '',
-        contacts[2]?.email || '',
-        contacts[2]?.linkedin_url || '',
-        contacts[2]?.company || '',
+        contacts[1]?.phone || '',
       ];
       lines.push(row.map(toCsvValue).join(','));
     });
@@ -398,23 +486,16 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     />
                   </div>
 
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 8 }}>
+                  <div style={{ display: 'grid', gap: 6, padding: 8 }}>
                     <button type="button" className="clear-cache-btn" onClick={selectAllVisibleStates}>
-                      Select visible
+                      Select all
                     </button>
                     <button type="button" className="clear-cache-btn" onClick={clearAllStates}>
-                      Clear states
-                    </button>
-                    <button
-                      type="button"
-                      className="clear-cache-btn"
-                      onClick={() => onSelectedStatesChange(new Set())}
-                    >
-                      Reset to all states
+                      Deselect all
                     </button>
                   </div>
 
-                  <div style={{ padding: '4px 0' }}>
+                  <div style={{ padding: '4px 0', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                     {visibleStatesSorted.map((st) => (
                       <label
                         key={st}
@@ -513,23 +594,34 @@ const IcpTab: React.FC<IcpTabProps> = ({
                 <option value="__custom__">Custom…</option>
               </select>
             </label>
-            <button type="button" className="clear-cache-btn" onClick={selectAllCandidates}>
+            <button
+              type="button"
+              className="clear-cache-btn"
+              onClick={selectAllCandidates}
+              style={{ minWidth: 190 }}
+            >
               Select visible ({displayedCandidates.length})
-            </button>
-            <button type="button" className="clear-cache-btn" onClick={clearSelectedCandidates}>
-              Clear visible
             </button>
             <button
               type="button"
               className="clear-cache-btn"
-              onClick={fetchContactsForSelected}
+              onClick={clearSelectedCandidates}
+              style={{ minWidth: 190 }}
+            >
+              Clear selected
+            </button>
+            <button
+              type="button"
+              className="clear-cache-btn"
+              onClick={fetchPublicContactsForSelected}
               disabled={downloadableSelectedRows.length === 0 || isLoadingContacts}
+              style={{ minWidth: 190 }}
               title={
                 downloadableSelectedRows.length === 0
                   ? 'Select at least 1 displayed plant to fetch contacts'
                   : isLoadingContacts
                   ? 'Loading contacts...'
-                  : 'Fetch contacts from Apollo.io'
+                  : 'Fetch contact info'
               }
             >
               {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${downloadableSelectedRows.length})`}
@@ -539,6 +631,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
               className="clear-cache-btn"
               onClick={downloadSelectedCsv}
               disabled={downloadableSelectedRows.length === 0}
+              style={{ minWidth: 190 }}
               title={
                 downloadableSelectedRows.length === 0
                   ? 'Select at least 1 displayed plant to export'
@@ -567,6 +660,151 @@ const IcpTab: React.FC<IcpTabProps> = ({
               ✓ Contacts loaded for {downloadableSelectedRows.length} selected plant(s). Ready to download CSV with contact info.
             </div>
           )}
+
+          <div
+            style={{
+              borderRadius: 8,
+              border: '1px solid rgba(0,0,0,0.1)',
+              background: '#ffffff',
+              overflow: 'hidden',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setIsPlantResearchOpen((v) => !v)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '7px 12px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              aria-expanded={isPlantResearchOpen}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    display: 'grid',
+                    placeItems: 'center',
+                    borderRadius: 6,
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    color: '#111827',
+                    fontSize: 12,
+                    lineHeight: 1,
+                    transform: isPlantResearchOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.15s ease',
+                    flex: '0 0 auto',
+                  }}
+                >
+                  ▶
+                </span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#111827', fontSize: 13 }}>
+                    Expand if you have more questions about a specific plant
+                  </div>
+                  {isPlantResearchOpen && (
+                    <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.25, marginTop: 2 }}>
+                      Q&A is only enabled when exactly 1 plant is selected.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>{isPlantResearchOpen ? 'Minimize' : 'Expand'}</div>
+            </button>
+
+            {isPlantResearchOpen && (
+              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+                {selectedPlantForResearch ? (
+                  <>
+                    <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                      Asking about <strong>{selectedPlantForResearch.name}</strong> ({getPlantState(selectedPlantForResearch)}). Limit 240 chars.
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <textarea
+                        value={plantQuestion}
+                        onChange={(e) => {
+                          setPlantQuestion(e.target.value.slice(0, 240));
+                          setPlantAnswer('');
+                          setPlantCitations([]);
+                          setPlantResearchError(null);
+                        }}
+                        placeholder="Example: Who is the owner/operator and what is the best official contact page?"
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: 10,
+                          border: '1px solid rgba(0,0,0,0.12)',
+                          background: '#ffffff',
+                          resize: 'vertical',
+                          fontSize: 13,
+                          lineHeight: 1.4,
+                          color: '#111827',
+                        }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>{plantQuestion.trim().length}/240</div>
+                        <button
+                          type="button"
+                          className="clear-cache-btn"
+                          onClick={runPlantResearch}
+                          disabled={isLoadingPlantResearch || plantQuestion.trim().length === 0}
+                          title={isLoadingPlantResearch ? 'Loading…' : 'Ask a question about the selected plant'}
+                        >
+                          {isLoadingPlantResearch ? 'Asking…' : 'Ask'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {plantResearchError && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#dc2626' }}>{plantResearchError}</div>
+                    )}
+
+                    {plantAnswer && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#111827' }}>Answer</div>
+                        <div
+                          style={{
+                            border: '1px solid rgba(0,0,0,0.08)',
+                            background: '#ffffff',
+                            borderRadius: 8,
+                            padding: 10,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                          }}
+                        >
+                          {renderAnswerBlock(plantAnswer)}
+                        </div>
+                        {plantCitations.length > 0 && (
+                          <div style={{ marginTop: 10, fontSize: 12, opacity: 1, color: '#111827' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>Sources</div>
+                            <div style={{ display: 'grid', gap: 4 }}>
+                              {plantCitations.map((url, idx) => (
+                                <a key={`${idx}-${url}`} href={url} target="_blank" rel="noreferrer">
+                                  [{idx + 1}] {getHostname(url)}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    Select exactly <strong>1</strong> plant to enable Q&A.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
             <button
