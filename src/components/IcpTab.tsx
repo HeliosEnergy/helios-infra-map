@@ -325,8 +325,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
     }
     const nextCount = Math.max(0, Math.min(undownloaded.length - startIndex, limit));
 
-    // Count for "Select not downloaded" (within top N window).
-    const top = rowsToShow <= 0 ? candidates : candidates.slice(0, rowsToShow);
     return { nextCount };
   }, [candidates, downloadedPlantIds, rowsToShow, selectedCandidateRows]);
 
