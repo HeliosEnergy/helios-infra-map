@@ -290,16 +290,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return exportableSelectedRows.slice(0, rowsToShow);
   }, [exportableSelectedRows, rowsToShow]);
 
-  const viewMoreCountLabel = useMemo(() => {
-    if (rowsToShow <= 0) return 'All';
-    return String(rowsToShow);
-  }, [rowsToShow]);
-
-  const nextBatchCount = useMemo(() => {
-    if (rowsToShow <= 0) return undownloadedCandidates.length;
-    return Math.min(rowsToShow, undownloadedCandidates.length);
-  }, [rowsToShow, undownloadedCandidates.length]);
-
   const selectedPlantForResearch = useMemo(() => {
     if (selectedCandidateRows.length !== 1) return null;
     return selectedCandidateRows[0]?.plant || null;
@@ -320,10 +310,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   const clearAllStates = () => {
     onSelectedStatesChange(new Set());
-  };
-
-  const selectAllCandidates = () => {
-    displayedCandidates.forEach((row) => onPlantSelect(row.plant.id));
   };
 
   const clearSelectedCandidates = () => {
