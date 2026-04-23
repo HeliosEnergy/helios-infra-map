@@ -9,6 +9,9 @@ type IcpTabProps = {
   selectedPlantIds: Set<string>;
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
+  downloadedPlantIds: Set<string>;
+  onMarkPlantsDownloaded: (plantIds: string[]) => void;
+  onClearDownloadedPlants: () => void;
   selectedStates: Set<string>;
   onSelectedStatesChange: (next: Set<string>) => void;
   excessThresholdMw: number;
@@ -50,6 +53,14 @@ const toCsvValue = (value: string | number | null | undefined): string => {
   const raw = value == null ? '' : String(value);
   const escaped = raw.replace(/"/g, '""');
   return `"${escaped}"`;
+};
+
+const splitName = (fullName: string): { firstName: string; lastName: string } => {
+  const normalized = String(fullName || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return { firstName: '', lastName: '' };
+  const parts = normalized.split(' ');
+  if (parts.length === 1) return { firstName: parts[0] || '', lastName: '' };
+  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
 };
 
 const downloadTextFile = (filename: string, text: string, mimeType = 'text/csv;charset=utf-8') => {
@@ -131,6 +142,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
   selectedPlantIds,
   onPlantSelect,
   onPlantDeselect,
+  downloadedPlantIds,
+  onMarkPlantsDownloaded,
+  onClearDownloadedPlants,
   selectedStates,
   onSelectedStatesChange,
   excessThresholdMw,
@@ -143,12 +157,16 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [rowsToShow, setRowsToShow] = useState<number>(10);
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const [isPlantResearchOpen, setIsPlantResearchOpen] = useState<boolean>(false);
+  const [autoSelectionMode, setAutoSelectionMode] = useState<'none' | 'top_all' | 'top_undownloaded'>('none');
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Apollo contacts state
   const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
   const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
+  const [isDownloadingCsv2, setIsDownloadingCsv2] = useState<boolean>(false);
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState<boolean>(false);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
 
   const [plantQuestion, setPlantQuestion] = useState<string>('');
   const [plantAnswer, setPlantAnswer] = useState<string>('');
@@ -174,6 +192,25 @@ const IcpTab: React.FC<IcpTabProps> = ({
       document.removeEventListener('mousedown', onMouseDown);
     };
   }, [isStatesOpen]);
+
+  useEffect(() => {
+    if (!isDownloadMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsDownloadMenuOpen(false);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (!downloadMenuRef.current) return;
+      if (!downloadMenuRef.current.contains(e.target as Node)) {
+        setIsDownloadMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onMouseDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [isDownloadMenuOpen]);
 
   const availableStates = useMemo(() => {
     const states = new Set<string>();
@@ -231,6 +268,10 @@ const IcpTab: React.FC<IcpTabProps> = ({
       .sort((a, b) => b.excess - a.excess);
   }, [powerPlants, selectedStates, excessThresholdMw]);
 
+  const undownloadedCandidates = useMemo(() => {
+    return candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
+  }, [candidates, downloadedPlantIds]);
+
   const selectedCandidateRows = useMemo(() => {
     return candidates.filter((row) => selectedPlantIds.has(row.plant.id));
   }, [candidates, selectedPlantIds]);
@@ -240,10 +281,24 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return candidates.slice(0, rowsToShow);
   }, [candidates, rowsToShow]);
 
-  const downloadableSelectedRows = useMemo(() => {
-    if (rowsToShow <= 0) return selectedCandidateRows;
-    return selectedCandidateRows.slice(0, rowsToShow);
-  }, [selectedCandidateRows, rowsToShow]);
+  const exportableSelectedRows = useMemo(() => {
+    return selectedCandidateRows.filter((row) => !downloadedPlantIds.has(row.plant.id));
+  }, [downloadedPlantIds, selectedCandidateRows]);
+
+  const downloadableExportableRows = useMemo(() => {
+    if (rowsToShow <= 0) return exportableSelectedRows;
+    return exportableSelectedRows.slice(0, rowsToShow);
+  }, [exportableSelectedRows, rowsToShow]);
+
+  const viewMoreCountLabel = useMemo(() => {
+    if (rowsToShow <= 0) return 'All';
+    return String(rowsToShow);
+  }, [rowsToShow]);
+
+  const nextBatchCount = useMemo(() => {
+    if (rowsToShow <= 0) return undownloadedCandidates.length;
+    return Math.min(rowsToShow, undownloadedCandidates.length);
+  }, [rowsToShow, undownloadedCandidates.length]);
 
   const selectedPlantForResearch = useMemo(() => {
     if (selectedCandidateRows.length !== 1) return null;
@@ -275,17 +330,45 @@ const IcpTab: React.FC<IcpTabProps> = ({
     displayedCandidates.forEach((row) => {
       if (selectedPlantIds.has(row.plant.id)) onPlantDeselect(row.plant.id);
     });
+    setAutoSelectionMode('none');
   };
+
+  const selectTopCandidates = useCallback(() => {
+    const top = rowsToShow <= 0 ? candidates : candidates.slice(0, rowsToShow);
+    const nextIds = top.map((r) => r.plant.id);
+    selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
+    nextIds.forEach((id) => onPlantSelect(id));
+    setAutoSelectionMode('top_all');
+  }, [candidates, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
+
+  const selectTopUndownloadedCandidates = useCallback(() => {
+    const top = rowsToShow <= 0 ? candidates : candidates.slice(0, rowsToShow);
+    const nextIds = top.filter((r) => !downloadedPlantIds.has(r.plant.id)).map((r) => r.plant.id);
+    selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
+    nextIds.forEach((id) => onPlantSelect(id));
+    setAutoSelectionMode('top_undownloaded');
+  }, [candidates, downloadedPlantIds, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
+
+  useEffect(() => {
+    if (autoSelectionMode === 'none') return;
+    if (autoSelectionMode === 'top_all') {
+      selectTopCandidates();
+      return;
+    }
+    if (autoSelectionMode === 'top_undownloaded') {
+      selectTopUndownloadedCandidates();
+    }
+  }, [autoSelectionMode, rowsToShow, selectTopCandidates, selectTopUndownloadedCandidates]);
 
   // Fetch contacts from public sources (free) for selected candidates
   const fetchPublicContactsForSelected = useCallback(async () => {
-    if (downloadableSelectedRows.length === 0) return;
+    if (downloadableExportableRows.length === 0) return;
 
     setIsLoadingContacts(true);
     setContactsError(null);
 
     const entries: { company: string; url?: string; plant_name: string; state: string; operator?: string }[] = [];
-    downloadableSelectedRows.forEach(({ plant }) => {
+    downloadableExportableRows.forEach(({ plant }) => {
       const owner = getOwner(plant);
       const operator = getOperator(plant);
       const url = getCompanyWebsite(plant);
@@ -307,7 +390,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     } finally {
       setIsLoadingContacts(false);
     }
-  }, [downloadableSelectedRows]);
+  }, [downloadableExportableRows]);
 
   const runPlantResearch = useCallback(async () => {
     if (!selectedPlantForResearch) return;
@@ -363,19 +446,19 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   // Check if we have contacts for all selected plants
   const hasContactsForAllSelected = useMemo(() => {
-    if (downloadableSelectedRows.length === 0) return false;
+    if (downloadableExportableRows.length === 0) return false;
 
-    return downloadableSelectedRows.every(({ plant }) => {
+    return downloadableExportableRows.every(({ plant }) => {
       const owner = getOwner(plant);
       const operator = getOperator(plant);
       const hasOwnerContacts = !owner || contactsByCompany[owner] !== undefined;
       const hasOperatorContacts = !operator || operator === owner || contactsByCompany[operator] !== undefined;
       return hasOwnerContacts && hasOperatorContacts;
     });
-  }, [downloadableSelectedRows, contactsByCompany]);
+  }, [downloadableExportableRows, contactsByCompany]);
 
   const downloadSelectedCsv = () => {
-    if (downloadableSelectedRows.length === 0) return;
+    if (downloadableExportableRows.length === 0) return;
 
     const header = [
       'plant_id',
@@ -404,7 +487,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     ];
 
     const lines: string[] = [header.map(toCsvValue).join(',')];
-    downloadableSelectedRows.forEach(({ plant, available, used, excess, capacityFactor }) => {
+    downloadableExportableRows.forEach(({ plant, available, used, excess, capacityFactor }) => {
       const [lon, lat] = plant.coordinates;
       const contacts = getContactsForPlant(plant);
 
@@ -441,7 +524,77 @@ const IcpTab: React.FC<IcpTabProps> = ({
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `icp-candidates_excess${excessThresholdMw}mw_rows${rowsToShow <= 0 ? 'all' : rowsToShow}_${timestamp}.csv`;
     downloadTextFile(filename, lines.join('\n'));
+
+    const downloadedIds = downloadableExportableRows.map(({ plant }) => plant.id);
+    onMarkPlantsDownloaded(downloadedIds);
+
+    // Clear just-downloaded selection to avoid accidental re-export.
+    downloadedIds.forEach((id) => onPlantDeselect(id));
   };
+
+  const downloadSelectedCsv2 = useCallback(async () => {
+    if (downloadableExportableRows.length === 0) return;
+
+    setIsDownloadingCsv2(true);
+    setContactsError(null);
+
+    try {
+      if (!hasContactsForAllSelected) {
+        await fetchPublicContactsForSelected();
+      }
+
+      const header = [
+        'First Name',
+        'Last Name',
+        'Title',
+        'Company Name',
+        'Email',
+        'Phone',
+        'Stage',
+        'Person Linkedin Url',
+      ];
+
+      const lines: string[] = [header.map(toCsvValue).join(',')];
+
+      downloadableExportableRows.forEach(({ plant }) => {
+        const contacts = getContactsForPlant(plant);
+        const best = [...contacts].sort((a, b) => {
+          const score = (c: Contact) =>
+            (c.email ? 3 : 0) + (c.phone ? 2 : 0) + (c.linkedin_url ? 1 : 0);
+          return score(b) - score(a);
+        })[0];
+
+        if (!best) return;
+
+        const { firstName, lastName } = splitName(best.name);
+        const row = [
+          firstName,
+          lastName,
+          best.title || '',
+          best.company || '',
+          best.email || '',
+          best.phone || '',
+          'Prospect',
+          best.linkedin_url || '',
+        ];
+        lines.push(row.map(toCsvValue).join(','));
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `icp-contacts_csv2_${timestamp}.csv`;
+      downloadTextFile(filename, lines.join('\n'));
+    } catch (error) {
+      console.error('Error downloading CSV 2:', error);
+      setContactsError(error instanceof Error ? error.message : 'Failed to download CSV 2');
+    } finally {
+      setIsDownloadingCsv2(false);
+    }
+  }, [
+    downloadableExportableRows,
+    fetchPublicContactsForSelected,
+    getContactsForPlant,
+    hasContactsForAllSelected,
+  ]);
 
   return (
     <div className="tab-content-placeholder">
@@ -597,10 +750,24 @@ const IcpTab: React.FC<IcpTabProps> = ({
             <button
               type="button"
               className="clear-cache-btn"
-              onClick={selectAllCandidates}
+              onClick={selectTopCandidates}
               style={{ minWidth: 190 }}
             >
-              Select visible ({displayedCandidates.length})
+              Select all ({rowsToShow <= 0 ? candidates.length : Math.min(rowsToShow, candidates.length)})
+            </button>
+            <button
+              type="button"
+              className="clear-cache-btn"
+              onClick={selectTopUndownloadedCandidates}
+              disabled={(rowsToShow <= 0 ? undownloadedCandidates.length : undownloadedCandidates.slice(0, rowsToShow).length) === 0}
+              style={{ minWidth: 190 }}
+              title={
+                rowsToShow <= 0
+                  ? 'Replace selection with all plants that have not been downloaded yet'
+                  : `Replace selection with the plants in the top ${rowsToShow} that have not been downloaded yet`
+              }
+            >
+              Select not downloaded ({rowsToShow <= 0 ? undownloadedCandidates.length : undownloadedCandidates.slice(0, rowsToShow).length})
             </button>
             <button
               type="button"
@@ -613,40 +780,138 @@ const IcpTab: React.FC<IcpTabProps> = ({
             <button
               type="button"
               className="clear-cache-btn"
+              onClick={onClearDownloadedPlants}
+              disabled={downloadedPlantIds.size === 0}
+              style={{ minWidth: 190 }}
+              title="Clear the downloaded marker for all plants"
+            >
+              Reset downloaded
+            </button>
+            <button
+              type="button"
+              className="clear-cache-btn"
               onClick={fetchPublicContactsForSelected}
-              disabled={downloadableSelectedRows.length === 0 || isLoadingContacts}
+              disabled={downloadableExportableRows.length === 0 || isLoadingContacts}
               style={{ minWidth: 190 }}
               title={
-                downloadableSelectedRows.length === 0
+                downloadableExportableRows.length === 0
                   ? 'Select at least 1 displayed plant to fetch contacts'
                   : isLoadingContacts
                   ? 'Loading contacts...'
                   : 'Fetch contact info'
               }
             >
-              {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${downloadableSelectedRows.length})`}
+              {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${rowsToShow <= 0 ? downloadableExportableRows.length : Math.min(rowsToShow, downloadableExportableRows.length)})`}
             </button>
             <button
               type="button"
               className="clear-cache-btn"
               onClick={downloadSelectedCsv}
-              disabled={downloadableSelectedRows.length === 0}
-              style={{ minWidth: 190 }}
-              title={
-                downloadableSelectedRows.length === 0
-                  ? 'Select at least 1 displayed plant to export'
-                  : hasContactsForAllSelected
-                  ? 'Download CSV with contacts'
-                  : 'Download CSV (fetch contacts first for contact info)'
-              }
+              disabled
+              style={{ display: 'none' }}
             >
-              Download CSV ({downloadableSelectedRows.length})
+              Download CSV
             </button>
+            <div style={{ position: 'relative' }} ref={downloadMenuRef}>
+              <button
+                type="button"
+                className="clear-cache-btn"
+                onClick={() => setIsDownloadMenuOpen((v) => !v)}
+                disabled={downloadableExportableRows.length === 0 || isLoadingContacts || isDownloadingCsv2}
+                style={{ minWidth: 190, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
+                title={
+                  downloadableExportableRows.length === 0
+                    ? 'Select at least 1 displayed plant to export'
+                    : 'Choose a CSV export format'
+                }
+              >
+                <span>{isDownloadingCsv2 ? 'Downloading…' : 'Download CSV'}</span>
+                <span aria-hidden="true" style={{ opacity: 0.8 }}>
+                  {isDownloadMenuOpen ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {isDownloadMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    zIndex: 1200,
+                    width: 260,
+                    borderRadius: 10,
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    background: '#ffffff',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    overflow: 'hidden',
+                  }}
+                  role="menu"
+                  aria-label="Download CSV options"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDownloadMenuOpen(false);
+                      downloadSelectedCsv();
+                    }}
+                    disabled={downloadableExportableRows.length === 0}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'grid',
+                      gap: 2,
+                    }}
+                    role="menuitem"
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
+                      Detailed CSV (plants)
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      Current format (multi-column) • {downloadableExportableRows.length} plant(s)
+                    </div>
+                  </button>
+                  <div style={{ height: 1, background: 'rgba(0,0,0,0.06)' }} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDownloadMenuOpen(false);
+                      void downloadSelectedCsv2();
+                    }}
+                    disabled={downloadableExportableRows.length === 0 || isLoadingContacts || isDownloadingCsv2}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'grid',
+                      gap: 2,
+                    }}
+                    role="menuitem"
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
+                      Contacts CSV (8 columns)
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      One contact per plant • {downloadableExportableRows.length} plant(s)
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.8 }}>
             Showing {candidates.length} plants in {Array.from(selectedStates).sort().join(', ')} with excess ≥{' '}
             {excessThresholdMw} MW.
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Downloaded (this device): {downloadedPlantIds.size}
           </div>
 
           {contactsError && (
@@ -655,9 +920,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
             </div>
           )}
 
-          {hasContactsForAllSelected && downloadableSelectedRows.length > 0 && (
+          {hasContactsForAllSelected && downloadableExportableRows.length > 0 && (
             <div style={{ fontSize: 12, color: '#059669', padding: '8px 12px', background: 'rgba(5, 150, 105, 0.1)', borderRadius: 6 }}>
-              ✓ Contacts loaded for {downloadableSelectedRows.length} selected plant(s). Ready to download CSV with contact info.
+              ✓ Contacts loaded for {downloadableExportableRows.length} selected plant(s). Ready to download CSV with contact info.
             </div>
           )}
 
@@ -838,43 +1103,72 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
             {isResultsOpen && (
               <div style={{ display: 'grid', gap: 8 }}>
-                {displayedCandidates.map(({ plant, excess }) => (
-                  <label
-                    key={plant.id}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '18px 1fr',
-                      gap: 10,
-                      alignItems: 'start',
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: '1px solid rgba(0,0,0,0.08)',
-                      background: 'rgba(255,255,255,0.5)',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedPlantIds.has(plant.id)}
-                      onChange={() =>
-                        (selectedPlantIds.has(plant.id) ? onPlantDeselect(plant.id) : onPlantSelect(plant.id))
-                      }
-                    />
-                    <div style={{ display: 'grid', gap: 2 }}>
-                      <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{plant.name}</div>
-                      <div style={{ fontSize: 12, opacity: 0.8 }}>
-                        {getPlantState(plant)} • Excess {excess.toFixed(1)} MW
-                      </div>
-                      {(getOwner(plant) || getOperator(plant)) && (
-                        <div style={{ fontSize: 12, opacity: 0.8 }}>
-                          {[getOwner(plant), getOperator(plant)].filter(Boolean).join(' • ')}
+                <div
+                  style={{
+                    maxHeight: 360,
+                    overflowY: 'auto',
+                    paddingRight: 6,
+                    display: 'grid',
+                    gap: 8,
+                  }}
+                >
+                  {displayedCandidates.map(({ plant, excess }) => (
+                    <label
+                      key={plant.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '18px 1fr',
+                        gap: 10,
+                        alignItems: 'start',
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        background: downloadedPlantIds.has(plant.id)
+                          ? 'rgba(5, 150, 105, 0.06)'
+                          : 'rgba(255,255,255,0.5)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPlantIds.has(plant.id)}
+                        onChange={() =>
+                          (selectedPlantIds.has(plant.id) ? onPlantDeselect(plant.id) : onPlantSelect(plant.id))
+                        }
+                      />
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{plant.name}</div>
+                          {downloadedPlantIds.has(plant.id) && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: '#059669',
+                                background: 'rgba(5, 150, 105, 0.12)',
+                                border: '1px solid rgba(5, 150, 105, 0.22)',
+                                padding: '2px 6px',
+                                borderRadius: 999,
+                              }}
+                            >
+                              Downloaded
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </label>
-                ))}
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          {getPlantState(plant)} • Excess {excess.toFixed(1)} MW
+                        </div>
+                        {(getOwner(plant) || getOperator(plant)) && (
+                          <div style={{ fontSize: 12, opacity: 0.8 }}>
+                            {[getOwner(plant), getOperator(plant)].filter(Boolean).join(' • ')}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
                 {rowsToShow > 0 && candidates.length > rowsToShow && (
                   <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    Showing first {rowsToShow} results out of {candidates.length}. Increase “View more” to view more.
+                    Showing first {rowsToShow} results out of {candidates.length}. Use “View more” to change the list size.
                   </div>
                 )}
               </div>

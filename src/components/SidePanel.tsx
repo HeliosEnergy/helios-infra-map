@@ -112,6 +112,11 @@ interface SidePanelProps {
   onPlantDeselect: (plantId: string) => void;
   onApplySelection: () => void;
 
+  // ICP download batching
+  downloadedPlantIds: Set<string>;
+  onMarkPlantsDownloaded: (plantIds: string[]) => void;
+  onClearDownloadedPlants: () => void;
+
   // Distance measurement
   isMeasuringDistance: boolean;
   measuredDistanceMiles: number | null;
@@ -200,6 +205,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onPlantSelect,
   onPlantDeselect,
   onApplySelection,
+
+  // ICP download batching
+  downloadedPlantIds,
+  onMarkPlantsDownloaded,
+  onClearDownloadedPlants,
 
   // Distance measurement
   isMeasuringDistance,
@@ -343,6 +353,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
             onExcessThresholdMwChange={onIcpExcessThresholdMwChange}
             sectorFilter={icpSectorFilter}
             onSectorFilterChange={onIcpSectorFilterChange}
+            downloadedPlantIds={downloadedPlantIds}
+            onMarkPlantsDownloaded={onMarkPlantsDownloaded}
+            onClearDownloadedPlants={onClearDownloadedPlants}
           />
         );
 

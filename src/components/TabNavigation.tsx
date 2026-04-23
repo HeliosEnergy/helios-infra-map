@@ -58,6 +58,7 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
 
     if (activeTabButton) {
       activeTabButton.focus();
+      activeTabButton.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     }
   }, [activeTab]);
 

@@ -329,6 +329,17 @@ function App() {
   const [filteredStatuses, setFilteredStatuses] = useState<Set<string>>(new Set());
   const [isFilterStateReady, setIsFilterStateReady] = useState(false);
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
+  const [downloadedPlantIds, setDownloadedPlantIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('icp-downloaded-plant-ids-v1');
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.map((v) => String(v)));
+    } catch {
+      return new Set();
+    }
+  });
 
   // ICP defaults: all states + 0 excess threshold
   // Convention: empty set means "all states" (no state filter applied).
@@ -539,6 +550,27 @@ function App() {
   };
 
   const handleApplySelection = () => {};
+
+  const handleMarkPlantsDownloaded = useCallback((plantIds: string[]) => {
+    if (!plantIds || plantIds.length === 0) return;
+    setDownloadedPlantIds((prev) => {
+      const next = new Set(prev);
+      plantIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const handleClearDownloadedPlants = useCallback(() => {
+    setDownloadedPlantIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('icp-downloaded-plant-ids-v1', JSON.stringify(Array.from(downloadedPlantIds)));
+    } catch {
+      // ignore storage errors (private mode, quota, etc)
+    }
+  }, [downloadedPlantIds]);
 
   const handleGoogleSearch = (plantName: string, source?: string, owner?: string) => {
     const searchTerms = [plantName];
@@ -946,6 +978,9 @@ function App() {
         onPlantSelect={handlePlantSelect}
         onPlantDeselect={handlePlantDeselect}
         onApplySelection={handleApplySelection}
+        downloadedPlantIds={downloadedPlantIds}
+        onMarkPlantsDownloaded={handleMarkPlantsDownloaded}
+        onClearDownloadedPlants={handleClearDownloadedPlants}
         isMeasuringDistance={isMeasuringDistance}
         measuredDistanceMiles={measuredDistanceMiles}
         onStartDistanceMeasurement={handleStartDistanceMeasurement}

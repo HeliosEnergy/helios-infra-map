@@ -6,6 +6,12 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  gap: 4px;
+  padding: 0 6px;
 }
 
 .dark .tab-navigation {
@@ -14,7 +20,8 @@
 }
 
 .tab-button {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 92px;
   padding: 12px 8px;
   border: none;
   background: transparent;
@@ -94,7 +101,10 @@
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .tab-badge {
