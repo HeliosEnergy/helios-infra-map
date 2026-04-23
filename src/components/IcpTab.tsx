@@ -157,7 +157,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [rowsToShow, setRowsToShow] = useState<number>(10);
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const [isPlantResearchOpen, setIsPlantResearchOpen] = useState<boolean>(false);
-  const [autoSelectionMode, setAutoSelectionMode] = useState<'none' | 'top_all' | 'top_undownloaded'>('none');
+  const [autoSelectionMode, setAutoSelectionMode] = useState<'none' | 'top_all' | 'next_undownloaded'>('none');
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Apollo contacts state
@@ -167,6 +167,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [isDownloadingCsv2, setIsDownloadingCsv2] = useState<boolean>(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState<boolean>(false);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const [isAdvancedSelectMenuOpen, setIsAdvancedSelectMenuOpen] = useState<boolean>(false);
+  const advancedSelectMenuRef = useRef<HTMLDivElement>(null);
 
   const [plantQuestion, setPlantQuestion] = useState<string>('');
   const [plantAnswer, setPlantAnswer] = useState<string>('');
@@ -211,6 +213,25 @@ const IcpTab: React.FC<IcpTabProps> = ({
       document.removeEventListener('mousedown', onMouseDown);
     };
   }, [isDownloadMenuOpen]);
+
+  useEffect(() => {
+    if (!isAdvancedSelectMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsAdvancedSelectMenuOpen(false);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (!advancedSelectMenuRef.current) return;
+      if (!advancedSelectMenuRef.current.contains(e.target as Node)) {
+        setIsAdvancedSelectMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onMouseDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [isAdvancedSelectMenuOpen]);
 
   const availableStates = useMemo(() => {
     const states = new Set<string>();
@@ -290,6 +311,25 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return exportableSelectedRows.slice(0, rowsToShow);
   }, [exportableSelectedRows, rowsToShow]);
 
+  const advancedSelectCounts = useMemo(() => {
+    const undownloaded = candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
+    const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
+
+    // Count for "Next N" (page forward through undownloaded).
+    const selectedIds = new Set(selectedCandidateRows.map((r) => r.plant.id));
+    let startIndex = 0;
+    for (let i = 0; i < undownloaded.length; i += 1) {
+      if (selectedIds.has(undownloaded[i]!.plant.id)) {
+        startIndex = i + 1;
+      }
+    }
+    const nextCount = Math.max(0, Math.min(undownloaded.length - startIndex, limit));
+
+    // Count for "Select not downloaded" (within top N window).
+    const top = rowsToShow <= 0 ? candidates : candidates.slice(0, rowsToShow);
+    return { nextCount };
+  }, [candidates, downloadedPlantIds, rowsToShow, selectedCandidateRows]);
+
   const selectedPlantForResearch = useMemo(() => {
     if (selectedCandidateRows.length !== 1) return null;
     return selectedCandidateRows[0]?.plant || null;
@@ -327,24 +367,48 @@ const IcpTab: React.FC<IcpTabProps> = ({
     setAutoSelectionMode('top_all');
   }, [candidates, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
 
-  const selectTopUndownloadedCandidates = useCallback(() => {
-    const top = rowsToShow <= 0 ? candidates : candidates.slice(0, rowsToShow);
-    const nextIds = top.filter((r) => !downloadedPlantIds.has(r.plant.id)).map((r) => r.plant.id);
+  const selectNextUndownloadedCandidates = useCallback(() => {
+    const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
+    const undownloaded = candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
+
+    // "Next" means: take the next batch after the current selection within the sorted undownloaded list.
+    // If nothing is selected, start from the top.
+    const selectedIds = new Set(selectedCandidateRows.map((r) => r.plant.id));
+    let startIndex = 0;
+    for (let i = 0; i < undownloaded.length; i += 1) {
+      if (selectedIds.has(undownloaded[i]!.plant.id)) {
+        startIndex = i + 1;
+      }
+    }
+
+    const nextIds = undownloaded.slice(startIndex, startIndex + limit).map((r) => r.plant.id);
+    if (nextIds.length === 0) return;
+
     selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
     nextIds.forEach((id) => onPlantSelect(id));
-    setAutoSelectionMode('top_undownloaded');
+    setAutoSelectionMode('next_undownloaded');
   }, [candidates, downloadedPlantIds, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
 
+  const lastRowsToShowRef = useRef<number>(rowsToShow);
   useEffect(() => {
+    // Only auto-reapply when the "View more" dropdown changes.
+    if (lastRowsToShowRef.current === rowsToShow) return;
+    lastRowsToShowRef.current = rowsToShow;
+
     if (autoSelectionMode === 'none') return;
     if (autoSelectionMode === 'top_all') {
       selectTopCandidates();
       return;
     }
-    if (autoSelectionMode === 'top_undownloaded') {
-      selectTopUndownloadedCandidates();
+    if (autoSelectionMode === 'next_undownloaded') {
+      selectNextUndownloadedCandidates();
     }
-  }, [autoSelectionMode, rowsToShow, selectTopCandidates, selectTopUndownloadedCandidates]);
+  }, [
+    autoSelectionMode,
+    rowsToShow,
+    selectNextUndownloadedCandidates,
+    selectTopCandidates,
+  ]);
 
   // Fetch contacts from public sources (free) for selected candidates
   const fetchPublicContactsForSelected = useCallback(async () => {
@@ -569,6 +633,11 @@ const IcpTab: React.FC<IcpTabProps> = ({
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `icp-contacts_csv2_${timestamp}.csv`;
       downloadTextFile(filename, lines.join('\n'));
+
+      // Mark plants as downloaded (same behavior as Detailed CSV).
+      const downloadedIds = downloadableExportableRows.map(({ plant }) => plant.id);
+      onMarkPlantsDownloaded(downloadedIds);
+      downloadedIds.forEach((id) => onPlantDeselect(id));
     } catch (error) {
       console.error('Error downloading CSV 2:', error);
       setContactsError(error instanceof Error ? error.message : 'Failed to download CSV 2');
@@ -580,6 +649,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
     fetchPublicContactsForSelected,
     getContactsForPlant,
     hasContactsForAllSelected,
+    onMarkPlantsDownloaded,
+    onPlantDeselect,
   ]);
 
   return (
@@ -741,20 +812,67 @@ const IcpTab: React.FC<IcpTabProps> = ({
             >
               Select all ({rowsToShow <= 0 ? candidates.length : Math.min(rowsToShow, candidates.length)})
             </button>
-            <button
-              type="button"
-              className="clear-cache-btn"
-              onClick={selectTopUndownloadedCandidates}
-              disabled={(rowsToShow <= 0 ? undownloadedCandidates.length : undownloadedCandidates.slice(0, rowsToShow).length) === 0}
-              style={{ minWidth: 190 }}
-              title={
-                rowsToShow <= 0
-                  ? 'Replace selection with all plants that have not been downloaded yet'
-                  : `Replace selection with the plants in the top ${rowsToShow} that have not been downloaded yet`
-              }
-            >
-              Select not downloaded ({rowsToShow <= 0 ? undownloadedCandidates.length : undownloadedCandidates.slice(0, rowsToShow).length})
-            </button>
+            <div style={{ position: 'relative' }} ref={advancedSelectMenuRef}>
+              <button
+                type="button"
+                className="clear-cache-btn"
+                onClick={() => setIsAdvancedSelectMenuOpen((v) => !v)}
+                disabled={candidates.length === 0}
+                style={{ minWidth: 190, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
+                title="Advanced selection options"
+              >
+                <span>Advanced select</span>
+                <span aria-hidden="true" style={{ opacity: 0.8 }}>
+                  {isAdvancedSelectMenuOpen ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {isAdvancedSelectMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    zIndex: 1200,
+                    width: 300,
+                    borderRadius: 10,
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    background: '#ffffff',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    overflow: 'hidden',
+                  }}
+                  role="menu"
+                  aria-label="Advanced select options"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAdvancedSelectMenuOpen(false);
+                      selectNextUndownloadedCandidates();
+                    }}
+                    disabled={undownloadedCandidates.length === 0}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'grid',
+                      gap: 2,
+                    }}
+                    role="menuitem"
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
+                      Next {rowsToShow <= 0 ? 'All' : rowsToShow} ({advancedSelectCounts.nextCount})
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      Page forward through not-downloaded plants
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="clear-cache-btn"
@@ -1080,7 +1198,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                 <span style={{ transform: isResultsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>
                   ▶
                 </span>
-                Candidates ({candidates.length})
+                Selected ({selectedCandidateRows.length} plant{selectedCandidateRows.length === 1 ? '' : 's'} selected)
               </span>
               <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.8 }}>
                 {isResultsOpen ? 'Hide' : 'Show'}
@@ -1098,7 +1216,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     gap: 8,
                   }}
                 >
-                  {displayedCandidates.map(({ plant, excess }) => (
+                  {selectedCandidateRows.map(({ plant, excess }) => (
                     <label
                       key={plant.id}
                       style={{
@@ -1152,9 +1270,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     </label>
                   ))}
                 </div>
-                {rowsToShow > 0 && candidates.length > rowsToShow && (
+                {selectedCandidateRows.length === 0 && (
                   <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    Showing first {rowsToShow} results out of {candidates.length}. Use “View more” to change the list size.
+                    No plants selected. Use “Select all” or “Advanced select” to choose plants.
                   </div>
                 )}
               </div>
