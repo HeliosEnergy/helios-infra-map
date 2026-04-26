@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PowerPlant } from '../models/PowerPlant';
 import type { Contact } from '../utils/apolloApi';
-import { fetchPublicContacts } from '../utils/publicContactsApi';
+import { fetchPublicContacts, type CompanyResearchSummary } from '../utils/publicContactsApi';
 import { askPlantResearch } from '../utils/plantResearchApi';
 
 type IcpTabProps = {
@@ -117,7 +117,7 @@ const renderAnswerBlock = (answer: string) => {
   );
 };
 
-const ROWS_TO_SHOW_PRESETS = [1, 10, 20, 50, 100, 200, 0] as const;
+const ROWS_TO_SHOW_PRESETS = [1, 5, 10, 20, 50, 100, 200, 0] as const;
 
 const getUsSector = (plant: PowerPlant): string =>
   plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
@@ -162,6 +162,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   // Apollo contacts state
   const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
+  const [companyResearchByCompany, setCompanyResearchByCompany] = useState<Record<string, CompanyResearchSummary>>({});
   const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const [isDownloadingCsv2, setIsDownloadingCsv2] = useState<boolean>(false);
@@ -430,8 +431,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
     });
 
     try {
-      const results = await fetchPublicContacts(entries);
+      const { results, company_research } = await fetchPublicContacts(entries);
       setContactsByCompany((prev) => ({ ...prev, ...results }));
+      setCompanyResearchByCompany((prev) => ({ ...prev, ...company_research }));
     } catch (error) {
       console.error('Error fetching contacts:', error);
       setContactsError(error instanceof Error ? error.message : 'Failed to fetch contacts');
@@ -592,6 +594,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
       }
 
       const header = [
+        'Plant Name',
         'First Name',
         'Last Name',
         'Title',
@@ -600,6 +603,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
         'Phone',
         'Stage',
         'Person Linkedin Url',
+        'AI Data Center Experience',
       ];
 
       const lines: string[] = [header.map(toCsvValue).join(',')];
@@ -614,8 +618,19 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
         if (!best) return;
 
+        const research = companyResearchByCompany[best.company];
+        const aiExperience =
+          !research
+            ? ''
+            : research.ai_data_center_experience === 'yes'
+            ? `Yes${research.ai_data_center_details ? ` - ${research.ai_data_center_details}` : ''}`
+            : research.ai_data_center_experience === 'no'
+            ? 'No'
+            : 'Info not available';
+
         const { firstName, lastName } = splitName(best.name);
         const row = [
+          plant.name,
           firstName,
           lastName,
           best.title || '',
@@ -624,6 +639,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
           best.phone || '',
           'Prospect',
           best.linkedin_url || '',
+          aiExperience,
         ];
         lines.push(row.map(toCsvValue).join(','));
       });
@@ -647,6 +663,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     fetchPublicContactsForSelected,
     getContactsForPlant,
     hasContactsForAllSelected,
+    companyResearchByCompany,
     onMarkPlantsDownloaded,
     onPlantDeselect,
   ]);
@@ -905,15 +922,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
             >
               {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${rowsToShow <= 0 ? downloadableExportableRows.length : Math.min(rowsToShow, downloadableExportableRows.length)})`}
             </button>
-            <button
-              type="button"
-              className="clear-cache-btn"
-              onClick={downloadSelectedCsv}
-              disabled
-              style={{ display: 'none' }}
-            >
-              Download CSV
-            </button>
             <div style={{ position: 'relative' }} ref={downloadMenuRef}>
               <button
                 type="button"
@@ -969,11 +977,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     }}
                     role="menuitem"
                   >
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
-                      Detailed CSV (plants)
-                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Detailed CSV (plants)</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      Current format (multi-column) • {downloadableExportableRows.length} plant(s)
+                      Multi-column plant export • {downloadableExportableRows.length} plant(s)
                     </div>
                   </button>
                   <div style={{ height: 1, background: 'rgba(0,0,0,0.06)' }} />
@@ -996,9 +1002,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     }}
                     role="menuitem"
                   >
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
-                      Contacts CSV (8 columns)
-                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Contacts CSV</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
                       One contact per plant • {downloadableExportableRows.length} plant(s)
                     </div>

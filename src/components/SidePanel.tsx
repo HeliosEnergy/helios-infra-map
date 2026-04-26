@@ -306,6 +306,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 measuredDistanceMiles={measuredDistanceMiles}
                 onStartDistanceMeasurement={onStartDistanceMeasurement}
                 onClearDistanceMeasurement={onClearDistanceMeasurement}
+                icpSectorFilter={icpSectorFilter}
+                onIcpSectorFilterChange={onIcpSectorFilterChange}
               />
         );
 

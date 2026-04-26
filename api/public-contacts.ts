@@ -35,10 +35,15 @@ type PerplexityContact = {
   source_url?: unknown;
 };
 
+type AiDataCenterExperience = 'yes' | 'no' | 'info_not_available';
+
 type PerplexityResponseShape = {
   owner_website?: unknown;
   contact_page_url?: unknown;
   contacts?: unknown;
+  ai_data_center_experience?: unknown;
+  ai_data_center_details?: unknown;
+  ai_data_center_source_url?: unknown;
 };
 
 const parseBody = (req: VercelRequest): Record<string, unknown> => {
@@ -137,15 +142,20 @@ const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company
     '- Exclude gridinfo.com and other third-party directories/aggregators.',
     '- If plant-specific contacts are not public, return the best owner/operator business contact.',
     '- Return at most 2 contacts.',
+    '- Also determine whether the owner/operator has worked on building AI data centers before.',
     '- Do not guess missing fields.',
     '- If a field cannot be verified from a source, leave it empty.',
     '- Each contact must include source_url pointing to the page where that contact detail was found.',
+    '- For AI data center experience, include ai_data_center_source_url pointing to the page supporting the claim.',
     '- Return only valid JSON. No markdown, no commentary.',
     '',
     'Return exactly this JSON shape:',
     '{',
     '  "owner_website": "",',
     '  "contact_page_url": "",',
+    '  "ai_data_center_experience": "yes|no|info_not_available",',
+    '  "ai_data_center_details": "",',
+    '  "ai_data_center_source_url": "",',
     '  "contacts": [',
     '    {',
     '      "name": "",',
@@ -207,9 +217,36 @@ const sanitizePerplexityContacts = (
   }).slice(0, 2);
 };
 
+type CompanyResearchSummary = {
+  ai_data_center_experience: AiDataCenterExperience;
+  ai_data_center_details: string;
+  ai_data_center_source_url: string;
+};
+
+const normalizeAiDataCenterExperience = (value: unknown): AiDataCenterExperience => {
+  const v = normalizeString(value).toLowerCase();
+  if (v === 'yes' || v === 'no' || v === 'info_not_available') return v;
+  return 'info_not_available';
+};
+
+const sanitizeCompanyResearchSummary = (
+  parsed: PerplexityResponseShape | null
+): CompanyResearchSummary => {
+  const experience = normalizeAiDataCenterExperience(parsed?.ai_data_center_experience);
+  const details = normalizeString(parsed?.ai_data_center_details);
+  const sourceUrl = normalizeUrl(parsed?.ai_data_center_source_url);
+
+  // Only keep details when experience is "yes"; otherwise it can be misleading.
+  return {
+    ai_data_center_experience: experience,
+    ai_data_center_details: experience === 'yes' ? details : '',
+    ai_data_center_source_url: experience === 'yes' ? sourceUrl : '',
+  };
+};
+
 const fetchPerplexityContacts = async (
   entry: Required<Pick<PublicContactEntry, 'company'>> & PublicContactEntry
-): Promise<ContactResult[]> => {
+): Promise<{ contacts: ContactResult[]; companyResearch: CompanyResearchSummary }> => {
   const apiKey = process.env.PERPLEXITY_API_KEY || '';
   if (!apiKey) {
     throw new Error('PERPLEXITY_API_KEY is not configured.');
@@ -247,7 +284,11 @@ const fetchPerplexityContacts = async (
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = normalizeString(payload.choices?.[0]?.message?.content);
-  return sanitizePerplexityContacts(entry.company, parsePerplexityJson(content));
+  const parsed = parsePerplexityJson(content);
+  return {
+    contacts: sanitizePerplexityContacts(entry.company, parsed),
+    companyResearch: sanitizeCompanyResearchSummary(parsed),
+  };
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -286,6 +327,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const results: Record<string, ContactResult[]> = {};
+    const company_research: Record<string, CompanyResearchSummary> = {};
 
     // Limit concurrency so we do not overwhelm the research API.
     const batchSize = 3;
@@ -294,22 +336,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const batchResults = await Promise.all(
         batch.map(async (entry) => {
           try {
-            const contacts = await fetchPerplexityContacts(entry);
-            return { entry, contacts };
+            const { contacts, companyResearch } = await fetchPerplexityContacts(entry);
+            return { entry, contacts, companyResearch };
           } catch (error) {
             console.error('Public contact research failed:', entry.company, error);
-            return { entry, contacts: [] as ContactResult[] };
+            return {
+              entry,
+              contacts: [] as ContactResult[],
+              companyResearch: {
+                ai_data_center_experience: 'info_not_available' as AiDataCenterExperience,
+                ai_data_center_details: '',
+                ai_data_center_source_url: '',
+              },
+            };
           }
         })
       );
 
-      for (const { entry, contacts } of batchResults) {
+      for (const { entry, contacts, companyResearch } of batchResults) {
         results[entry.company] = (results[entry.company] || []).concat(contacts);
+        company_research[entry.company] = companyResearch;
       }
     }
 
     res.setHeader('Cache-Control', 'private, max-age=300');
-    return res.status(200).json({ results });
+    return res.status(200).json({ results, company_research });
   } catch (error) {
     console.error('Error fetching public contacts:', error);
     return res.status(500).json({ error: 'Failed to fetch public contacts' });

@@ -280,6 +280,22 @@ interface LayersFiltersTabProps {
   measuredDistanceMiles: number | null;
   onStartDistanceMeasurement: () => void;
   onClearDistanceMeasurement: () => void;
+
+  // ICP sector filter (US)
+  icpSectorFilter:
+    | 'all'
+    | 'independent'
+    | 'electric_utility'
+    | 'commercial'
+    | 'other';
+  onIcpSectorFilterChange: (
+    next:
+      | 'all'
+      | 'independent'
+      | 'electric_utility'
+      | 'commercial'
+      | 'other'
+  ) => void;
 }
 
 type PowerRangePreset = 'small' | 'medium' | 'large' | 'custom';
@@ -332,6 +348,8 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   measuredDistanceMiles,
   onStartDistanceMeasurement,
   onClearDistanceMeasurement,
+  icpSectorFilter,
+  onIcpSectorFilterChange,
 }) => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<PowerRangePreset>>(new Set());
@@ -1113,6 +1131,29 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
               />
             </div>
 
+            <div className="filter-section">
+              <label className="filter-label">Sector (US)</label>
+              <select
+                value={icpSectorFilter}
+                onChange={(e) =>
+                  onIcpSectorFilterChange(
+                    e.target.value as
+                      | 'all'
+                      | 'independent'
+                      | 'electric_utility'
+                      | 'commercial'
+                      | 'other'
+                  )
+                }
+                className="select-input"
+              >
+                <option value="all">All</option>
+                <option value="independent">Independent providers</option>
+                <option value="electric_utility">Electric utility</option>
+                <option value="commercial">Commercial / industrial</option>
+                <option value="other">Other / unknown</option>
+              </select>
+            </div>
 
           </div>
         )}

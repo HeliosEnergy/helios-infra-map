@@ -11,11 +11,25 @@ export type PublicContactEntry = {
 
 export type PublicContactsResponse = {
   results: Record<string, Contact[]>;
+  company_research?: Record<
+    string,
+    {
+      ai_data_center_experience?: 'yes' | 'no' | 'info_not_available';
+      ai_data_center_details?: string;
+      ai_data_center_source_url?: string;
+    }
+  >;
+};
+
+export type CompanyResearchSummary = {
+  ai_data_center_experience: 'yes' | 'no' | 'info_not_available';
+  ai_data_center_details: string;
+  ai_data_center_source_url: string;
 };
 
 export async function fetchPublicContacts(
   entries: PublicContactEntry[]
-): Promise<Record<string, Contact[]>> {
+): Promise<{ results: Record<string, Contact[]>; company_research: Record<string, CompanyResearchSummary> }> {
   const normalized = entries
     .map((e) => ({
       company: String(e.company || '').trim(),
@@ -26,7 +40,7 @@ export async function fetchPublicContacts(
     }))
     .filter((e) => e.company.length > 0);
 
-  if (normalized.length === 0) return {};
+  if (normalized.length === 0) return { results: {}, company_research: {} };
 
   const response = await authenticatedFetch('/api/public-contacts', {
     method: 'POST',
@@ -42,6 +56,9 @@ export async function fetchPublicContacts(
   }
 
   const data = (await response.json()) as PublicContactsResponse;
-  return data.results || {};
+  return {
+    results: data.results || {},
+    company_research: (data.company_research || {}) as Record<string, CompanyResearchSummary>,
+  };
 }
 
