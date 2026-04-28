@@ -704,17 +704,12 @@ function App() {
     showFiberCables
   );
 
-  const { filteredPowerPlants, nearbyPlants, proximityPlantCount } = useProximityAnalysis({
+  const { filteredPowerPlants, nearbyPlants } = useProximityAnalysis({
     powerPlants,
     showOnlyNearbyPlants,
     lineIndex,
     proximityDistance: debouncedDistance,
   });
-
-  const icpPowerPlants = useMemo(
-    () => (showOnlyNearbyPlants ? nearbyPlants : powerPlants),
-    [showOnlyNearbyPlants, nearbyPlants, powerPlants]
-  );
 
   const icpMapFilteredPowerPlants = useMemo(() => {
     const threshold = Number.isFinite(icpExcessThresholdMw) ? icpExcessThresholdMw : 0;
@@ -735,6 +730,15 @@ function App() {
       return excess >= threshold;
     });
   }, [filteredPowerPlants, icpSelectedStates, icpExcessThresholdMw, icpSectorFilter]);
+
+  // Proximity UI count should reflect *all* active filters (including ICP filters).
+  const proximityPlantCount = useMemo(() => {
+    if (!showOnlyNearbyPlants) return 0;
+    return icpMapFilteredPowerPlants.length;
+  }, [icpMapFilteredPowerPlants.length, showOnlyNearbyPlants]);
+
+  // Feed the ICP tab the same filtered list used by the map, so counts stay consistent.
+  const icpPowerPlants = useMemo(() => icpMapFilteredPowerPlants, [icpMapFilteredPowerPlants]);
 
   const { fiberLayer, hifldLayer } = useVectorTileLayers({
     showFiberCables,

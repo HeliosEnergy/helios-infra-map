@@ -167,12 +167,10 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   // Apollo contacts state
   const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
-  const [companyResearchByCompany, setCompanyResearchByCompany] = useState<Record<string, CompanyResearchSummary>>({});
+  const [, setCompanyResearchByCompany] = useState<Record<string, CompanyResearchSummary>>({});
   const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const [isDownloadingCsv2, setIsDownloadingCsv2] = useState<boolean>(false);
-  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState<boolean>(false);
-  const downloadMenuRef = useRef<HTMLDivElement>(null);
   const [isAdvancedSelectMenuOpen, setIsAdvancedSelectMenuOpen] = useState<boolean>(false);
   const advancedSelectMenuRef = useRef<HTMLDivElement>(null);
 
@@ -187,12 +185,12 @@ const IcpTab: React.FC<IcpTabProps> = ({
     setContactsByCompany({});
     setCompanyResearchByCompany({});
     setContactsError(null);
-    setIsDownloadMenuOpen(false);
     setIsAdvancedSelectMenuOpen(false);
     setPlantQuestion('');
     setPlantAnswer('');
     setPlantCitations([]);
     setPlantResearchError(null);
+    setDownloadCsvHint(null);
   }, [icpResetNonce]);
 
   const [plantQuestion, setPlantQuestion] = useState<string>('');
@@ -200,6 +198,13 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [plantCitations, setPlantCitations] = useState<string[]>([]);
   const [plantResearchError, setPlantResearchError] = useState<string | null>(null);
   const [isLoadingPlantResearch, setIsLoadingPlantResearch] = useState<boolean>(false);
+  const [downloadCsvHint, setDownloadCsvHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!downloadCsvHint) return;
+    const t = window.setTimeout(() => setDownloadCsvHint(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [downloadCsvHint]);
 
   useEffect(() => {
     if (!isStatesOpen) return;
@@ -220,24 +225,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     };
   }, [isStatesOpen]);
 
-  useEffect(() => {
-    if (!isDownloadMenuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsDownloadMenuOpen(false);
-    };
-    const onMouseDown = (e: MouseEvent) => {
-      if (!downloadMenuRef.current) return;
-      if (!downloadMenuRef.current.contains(e.target as Node)) {
-        setIsDownloadMenuOpen(false);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onMouseDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onMouseDown);
-    };
-  }, [isDownloadMenuOpen]);
+  // (removed) download menu handlers - now a single button
 
   useEffect(() => {
     if (!isAdvancedSelectMenuOpen) return;
@@ -314,10 +302,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
       .sort((a, b) => b.excess - a.excess);
   }, [powerPlants, selectedStates, excessThresholdMw]);
 
-  const undownloadedCandidates = useMemo(() => {
-    return candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
-  }, [candidates, downloadedPlantIds]);
-
   const selectedCandidateRows = useMemo(() => {
     return candidates.filter((row) => selectedPlantIds.has(row.plant.id));
   }, [candidates, selectedPlantIds]);
@@ -327,20 +311,16 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return candidates.slice(0, rowsToShow);
   }, [candidates, rowsToShow]);
 
-  const exportableSelectedRows = useMemo(() => {
-    return selectedCandidateRows.filter((row) => !downloadedPlantIds.has(row.plant.id));
-  }, [downloadedPlantIds, selectedCandidateRows]);
-
-  const downloadableExportableRows = useMemo(() => {
-    if (rowsToShow <= 0) return exportableSelectedRows;
-    return exportableSelectedRows.slice(0, rowsToShow);
-  }, [exportableSelectedRows, rowsToShow]);
+  // User intent: selection should be exportable even if already marked downloaded.
+  const selectedExportRows = useMemo(() => {
+    if (rowsToShow <= 0) return selectedCandidateRows;
+    return selectedCandidateRows.slice(0, rowsToShow);
+  }, [rowsToShow, selectedCandidateRows]);
 
   const advancedSelectCounts = useMemo(() => {
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
 
-    // Count for "Next N": page forward by candidate position, but select the next N *undownloaded* plants.
-    // This avoids "losing" slots when the current selection includes downloaded rows.
+    // Count for "Next N": prefer undownloaded, but if everything is downloaded, still allow paging.
     const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
 
     let nextCount = 0;
@@ -348,6 +328,13 @@ const IcpTab: React.FC<IcpTabProps> = ({
       const plantId = candidates[i]!.plant.id;
       if (downloadedPlantIds.has(plantId)) continue;
       nextCount += 1;
+    }
+
+    if (nextCount === 0) {
+      // Fallback: all remaining plants are downloaded; still allow selecting next N.
+      for (let i = startIndex + 1; i < candidates.length && nextCount < limit; i += 1) {
+        nextCount += 1;
+      }
     }
 
     return { nextCount };
@@ -394,7 +381,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   const selectNextUndownloadedCandidates = useCallback(() => {
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
-    // "Next" means: start after the paging cursor (candidate rank), then pick the next N undownloaded plants.
+    // "Next" means: start after the paging cursor (candidate rank), then pick the next N.
+    // Prefer undownloaded plants, but allow re-selecting downloaded when needed.
     const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
 
     const nextIds: string[] = [];
@@ -404,6 +392,14 @@ const IcpTab: React.FC<IcpTabProps> = ({
       if (downloadedPlantIds.has(plantId)) continue;
       nextIds.push(plantId);
       lastIncludedIdx = i;
+    }
+    if (nextIds.length === 0) {
+      // Fallback: all remaining are downloaded, but user still wants to page/select.
+      for (let i = startIndex + 1; i < candidates.length && nextIds.length < limit; i += 1) {
+        const plantId = candidates[i]!.plant.id;
+        nextIds.push(plantId);
+        lastIncludedIdx = i;
+      }
     }
     if (nextIds.length === 0) return;
 
@@ -444,13 +440,13 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   // Fetch contacts from public sources (free) for selected candidates
   const fetchPublicContactsForSelected = useCallback(async () => {
-    if (downloadableExportableRows.length === 0) return;
+    if (selectedExportRows.length === 0) return;
 
     setIsLoadingContacts(true);
     setContactsError(null);
 
     const entries: { company: string; url?: string; plant_name: string; state: string; operator?: string }[] = [];
-    downloadableExportableRows.forEach(({ plant }) => {
+    selectedExportRows.forEach(({ plant }) => {
       const owner = getOwner(plant);
       const operator = getOperator(plant);
       const url = getCompanyWebsite(plant);
@@ -473,7 +469,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     } finally {
       setIsLoadingContacts(false);
     }
-  }, [downloadableExportableRows]);
+  }, [selectedExportRows]);
 
   const runPlantResearch = useCallback(async () => {
     if (!selectedPlantForResearch) return;
@@ -529,94 +525,21 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   // Check if we have contacts for all selected plants
   const hasContactsForAllSelected = useMemo(() => {
-    if (downloadableExportableRows.length === 0) return false;
+    if (selectedExportRows.length === 0) return false;
 
-    return downloadableExportableRows.every(({ plant }) => {
+    return selectedExportRows.every(({ plant }) => {
       const owner = getOwner(plant);
       const operator = getOperator(plant);
       const hasOwnerContacts = !owner || contactsByCompany[owner] !== undefined;
       const hasOperatorContacts = !operator || operator === owner || contactsByCompany[operator] !== undefined;
       return hasOwnerContacts && hasOperatorContacts;
     });
-  }, [downloadableExportableRows, contactsByCompany]);
+  }, [selectedExportRows, contactsByCompany]);
 
-  const downloadSelectedCsv = () => {
-    if (downloadableExportableRows.length === 0) return;
-
-    const header = [
-      'plant_id',
-      'plant_name',
-      'state',
-      'available_mw',
-      'used_mw',
-      'excess_mw',
-      'capacity_factor_percent',
-      'owner',
-      'operator',
-      'plant_url',
-      'owner_website',
-      'latitude',
-      'longitude',
-      'contact_1_name',
-      'contact_1_title',
-      'contact_1_email',
-      'contact_1_linkedin',
-      'contact_1_phone',
-      'contact_2_name',
-      'contact_2_title',
-      'contact_2_email',
-      'contact_2_linkedin',
-      'contact_2_phone',
-    ];
-
-    const lines: string[] = [header.map(toCsvValue).join(',')];
-    downloadableExportableRows.forEach(({ plant, available, used, excess, capacityFactor }) => {
-      const [lon, lat] = plant.coordinates;
-      const contacts = getContactsForPlant(plant);
-
-      const row = [
-        plant.id,
-        plant.name,
-        getPlantState(plant),
-        available.toFixed(1),
-        used.toFixed(1),
-        excess.toFixed(1),
-        capacityFactor.toFixed(1),
-        getOwner(plant),
-        getOperator(plant),
-        getPlantUrl(plant),
-        getCompanyWebsite(plant),
-        Number.isFinite(lat) ? lat.toFixed(6) : '',
-        Number.isFinite(lon) ? lon.toFixed(6) : '',
-        // Contact 1
-        contacts[0]?.name || '',
-        contacts[0]?.title || '',
-        contacts[0]?.email || '',
-        contacts[0]?.linkedin_url || '',
-        contacts[0]?.phone || '',
-        // Contact 2
-        contacts[1]?.name || '',
-        contacts[1]?.title || '',
-        contacts[1]?.email || '',
-        contacts[1]?.linkedin_url || '',
-        contacts[1]?.phone || '',
-      ];
-      lines.push(row.map(toCsvValue).join(','));
-    });
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `icp-candidates_excess${excessThresholdMw}mw_rows${rowsToShow <= 0 ? 'all' : rowsToShow}_${timestamp}.csv`;
-    downloadTextFile(filename, lines.join('\n'));
-
-    const downloadedIds = downloadableExportableRows.map(({ plant }) => plant.id);
-    onMarkPlantsDownloaded(downloadedIds);
-
-    // Clear just-downloaded selection to avoid accidental re-export.
-    downloadedIds.forEach((id) => onPlantDeselect(id));
-  };
+  // (removed) Detailed plant CSV export
 
   const downloadSelectedCsv2 = useCallback(async () => {
-    if (downloadableExportableRows.length === 0) return;
+    if (selectedExportRows.length === 0) return;
 
     setIsDownloadingCsv2(true);
     setContactsError(null);
@@ -628,6 +551,10 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
       const header = [
         'Plant Name',
+        'Location',
+        'Energy Source',
+        'Power Plant Type',
+        'IPP/Utility Type',
         'First Name',
         'Last Name',
         'Title',
@@ -636,12 +563,11 @@ const IcpTab: React.FC<IcpTabProps> = ({
         'Phone',
         'Stage',
         'Person Linkedin Url',
-        'AI Data Center Experience',
       ];
 
       const lines: string[] = [header.map(toCsvValue).join(',')];
 
-      downloadableExportableRows.forEach(({ plant }) => {
+      selectedExportRows.forEach(({ plant }) => {
         const contacts = getContactsForPlant(plant);
         const best = [...contacts].sort((a, b) => {
           const score = (c: Contact) =>
@@ -651,19 +577,29 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
         if (!best) return;
 
-        const research = companyResearchByCompany[best.company];
-        const aiExperience =
-          !research
-            ? ''
-            : research.ai_data_center_experience === 'yes'
-            ? `Yes${research.ai_data_center_details ? ` - ${research.ai_data_center_details}` : ''}`
-            : research.ai_data_center_experience === 'no'
-            ? 'No'
-            : 'Info not available';
+        const city = String(plant.rawData?.['City (Site Name)'] || '').trim();
+        const state = String(plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '').trim();
+        const country = String(plant.country || '').trim();
+        const location = [city, state, country].filter((p) => p && p.length > 0).join(', ');
+        const energySource = String(plant.source || '').trim();
+        const plantType = String(plant.rawData?.technology || '').trim();
+        const ipt = classifyUsSector(getUsSector(plant));
+        const ippUtilityType =
+          ipt === 'independent'
+            ? 'IPP'
+            : ipt === 'electric_utility'
+            ? 'Utility'
+            : ipt === 'commercial'
+            ? 'Commercial/Industrial'
+            : 'Other';
 
         const { firstName, lastName } = splitName(best.name);
         const row = [
           plant.name,
+          location,
+          energySource,
+          plantType,
+          ippUtilityType,
           firstName,
           lastName,
           best.title || '',
@@ -672,7 +608,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
           best.phone || '',
           'Prospect',
           best.linkedin_url || '',
-          aiExperience,
         ];
         lines.push(row.map(toCsvValue).join(','));
       });
@@ -682,7 +617,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
       downloadTextFile(filename, lines.join('\n'));
 
       // Mark plants as downloaded (same behavior as Detailed CSV).
-      const downloadedIds = downloadableExportableRows.map(({ plant }) => plant.id);
+      const downloadedIds = selectedExportRows.map(({ plant }) => plant.id);
       onMarkPlantsDownloaded(downloadedIds);
       downloadedIds.forEach((id) => onPlantDeselect(id));
     } catch (error) {
@@ -692,11 +627,10 @@ const IcpTab: React.FC<IcpTabProps> = ({
       setIsDownloadingCsv2(false);
     }
   }, [
-    downloadableExportableRows,
+    selectedExportRows,
     fetchPublicContactsForSelected,
     getContactsForPlant,
     hasContactsForAllSelected,
-    companyResearchByCompany,
     onMarkPlantsDownloaded,
     onPlantDeselect,
   ]);
@@ -909,7 +843,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                       setIsAdvancedSelectMenuOpen(false);
                       selectNextUndownloadedCandidates();
                     }}
-                    disabled={undownloadedCandidates.length === 0}
+                    disabled={pagingCursorCandidateIndex >= candidates.length - 1}
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -954,107 +888,67 @@ const IcpTab: React.FC<IcpTabProps> = ({
               type="button"
               className="clear-cache-btn"
               onClick={fetchPublicContactsForSelected}
-              disabled={downloadableExportableRows.length === 0 || isLoadingContacts}
+              disabled={selectedExportRows.length === 0 || isLoadingContacts}
               style={{ minWidth: 190 }}
               title={
-                downloadableExportableRows.length === 0
+                selectedExportRows.length === 0
                   ? 'Select at least 1 displayed plant to fetch contacts'
                   : isLoadingContacts
                   ? 'Loading contacts...'
                   : 'Fetch contact info'
               }
             >
-              {isLoadingContacts ? 'Loading...' : `Fetch Contacts (${rowsToShow <= 0 ? downloadableExportableRows.length : Math.min(rowsToShow, downloadableExportableRows.length)})`}
+              {isLoadingContacts
+                ? 'Loading...'
+                : `Fetch Contacts (${rowsToShow <= 0 ? selectedExportRows.length : Math.min(rowsToShow, selectedExportRows.length)})`}
             </button>
-            <div style={{ position: 'relative' }} ref={downloadMenuRef}>
-              <button
-                type="button"
-                className="clear-cache-btn"
-                onClick={() => setIsDownloadMenuOpen((v) => !v)}
-                disabled={downloadableExportableRows.length === 0 || isLoadingContacts || isDownloadingCsv2}
-                style={{ minWidth: 190, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
-                title={
-                  downloadableExportableRows.length === 0
-                    ? 'Select at least 1 displayed plant to export'
-                    : 'Choose a CSV export format'
+            <button
+              type="button"
+              className="clear-cache-btn"
+              onClick={() => {
+                if (selectedExportRows.length === 0) return;
+                if (isLoadingContacts || isDownloadingCsv2) return;
+                if (!hasContactsForAllSelected) {
+                  setDownloadCsvHint('Fetch the contacts before downloading the CSV.');
+                  return;
                 }
-              >
-                <span>{isDownloadingCsv2 ? 'Downloading…' : 'Download CSV'}</span>
-                <span aria-hidden="true" style={{ opacity: 0.8 }}>
-                  {isDownloadMenuOpen ? '▲' : '▼'}
-                </span>
-              </button>
-
-              {isDownloadMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    left: 0,
-                    zIndex: 1200,
-                    width: 260,
-                    borderRadius: 10,
-                    border: '1px solid rgba(0,0,0,0.12)',
-                    background: '#ffffff',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                    overflow: 'hidden',
-                  }}
-                  role="menu"
-                  aria-label="Download CSV options"
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDownloadMenuOpen(false);
-                      downloadSelectedCsv();
-                    }}
-                    disabled={downloadableExportableRows.length === 0}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'grid',
-                      gap: 2,
-                    }}
-                    role="menuitem"
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Detailed CSV (plants)</div>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      Multi-column plant export • {downloadableExportableRows.length} plant(s)
-                    </div>
-                  </button>
-                  <div style={{ height: 1, background: 'rgba(0,0,0,0.06)' }} />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDownloadMenuOpen(false);
-                      void downloadSelectedCsv2();
-                    }}
-                    disabled={downloadableExportableRows.length === 0 || isLoadingContacts || isDownloadingCsv2}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'grid',
-                      gap: 2,
-                    }}
-                    role="menuitem"
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Contacts CSV</div>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      One contact per plant • {downloadableExportableRows.length} plant(s)
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
+                void downloadSelectedCsv2();
+              }}
+              disabled={selectedExportRows.length === 0 || isLoadingContacts || isDownloadingCsv2}
+              aria-disabled={!hasContactsForAllSelected}
+              style={{
+                minWidth: 190,
+                opacity: !hasContactsForAllSelected ? 0.55 : 1,
+                cursor: !hasContactsForAllSelected ? 'not-allowed' : 'pointer',
+              }}
+              title={
+                selectedExportRows.length === 0
+                  ? 'Select at least 1 displayed plant to export'
+                  : isLoadingContacts
+                  ? 'Loading contacts...'
+                  : !hasContactsForAllSelected
+                  ? 'Fetch contacts first to enable CSV download'
+                  : 'Download contacts CSV (13 columns, one contact per plant)'
+              }
+            >
+              {isDownloadingCsv2 ? 'Downloading…' : 'Download CSV'}
+            </button>
           </div>
+
+          {downloadCsvHint && (
+            <div
+              style={{
+                fontSize: 12,
+                color: '#92400e',
+                padding: '8px 12px',
+                background: 'rgba(251, 191, 36, 0.18)',
+                borderRadius: 6,
+              }}
+              role="status"
+            >
+              {downloadCsvHint}
+            </div>
+          )}
 
           <div style={{ fontSize: 12, opacity: 0.8 }}>
             Showing {candidates.length} plants in {Array.from(selectedStates).sort().join(', ')} with excess ≥{' '}
@@ -1070,9 +964,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
             </div>
           )}
 
-          {hasContactsForAllSelected && downloadableExportableRows.length > 0 && (
+          {hasContactsForAllSelected && selectedExportRows.length > 0 && (
             <div style={{ fontSize: 12, color: '#059669', padding: '8px 12px', background: 'rgba(5, 150, 105, 0.1)', borderRadius: 6 }}>
-              ✓ Contacts loaded for {downloadableExportableRows.length} selected plant(s). Ready to download CSV with contact info.
+              ✓ Contacts loaded for {selectedExportRows.length} selected plant(s). Ready to download CSV with contact info.
             </div>
           )}
 
