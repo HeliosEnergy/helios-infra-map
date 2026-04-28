@@ -296,6 +296,10 @@ interface LayersFiltersTabProps {
       | 'commercial'
       | 'other'
   ) => void;
+
+  // Reset all filters across app
+  onResetLayersFiltersOnly: () => void;
+  layersFiltersResetNonce: number;
 }
 
 type PowerRangePreset = 'small' | 'medium' | 'large' | 'custom';
@@ -350,6 +354,8 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onClearDistanceMeasurement,
   icpSectorFilter,
   onIcpSectorFilterChange,
+  onResetLayersFiltersOnly,
+  layersFiltersResetNonce,
 }) => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedPresets, setSelectedPresets] = useState<Set<PowerRangePreset>>(new Set());
@@ -560,8 +566,39 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
     setMaxCapacityFactorInput(maxCapacityFactor.toString());
   }, [maxCapacityFactor]);
 
+  useEffect(() => {
+    // Reset UI-only state when tab-level reset triggers.
+    setShowAdvancedFilters(false);
+    setSelectedPresets(new Set());
+    setShowCustomRangeInputs(false);
+    setIsManuallyAdjustingPowerRange(false);
+    setIsCountryDropdownOpen(false);
+    setCountrySearchTerm('');
+    setMinInputValue(minPowerOutput.toString());
+    setMaxInputValue(maxPowerOutput.toString());
+    setMinCapacityFactorInput(minCapacityFactor.toString());
+    setMaxCapacityFactorInput(maxCapacityFactor.toString());
+  }, [layersFiltersResetNonce, maxCapacityFactor, maxPowerOutput, minCapacityFactor, minPowerOutput]);
+
   return (
     <div className="layers-filters-tab">
+      <section className="tab-section">
+        <div className="control-group">
+          <button
+            type="button"
+            className="preset-button"
+            onClick={onResetLayersFiltersOnly}
+            style={{
+              borderRadius: 8,
+              padding: '10px 12px',
+              fontWeight: 700,
+            }}
+            title="Reset filters in this tab only"
+          >
+            Reset filters (this tab)
+          </button>
+        </div>
+      </section>
       {/* Layer Visibility Section */}
       <section className="tab-section">
         <h3 className="section-title">Layer Visibility</h3>

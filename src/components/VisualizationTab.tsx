@@ -7,6 +7,8 @@ interface VisualizationTabProps {
   setCapacityWeight: (value: number) => void;
   sizeByOption: 'nameplate_capacity' | 'capacity_factor' | 'generation';
   setSizeByOption: (value: 'nameplate_capacity' | 'capacity_factor' | 'generation') => void;
+  onResetVisualizationOnly: () => void;
+  visualizationResetNonce: number;
 }
 
 // Data availability status
@@ -25,6 +27,7 @@ const VisualizationTab: React.FC<VisualizationTabProps> = ({
   setCapacityWeight,
   sizeByOption,
   setSizeByOption,
+  onResetVisualizationOnly,
 }) => {
   // Safety check: if sizeByOption is invalid (e.g., from old saved state), reset to default
   useEffect(() => {
@@ -36,6 +39,17 @@ const VisualizationTab: React.FC<VisualizationTabProps> = ({
 
   return (
     <div className="visualization-tab">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button
+          type="button"
+          className="preset-button"
+          onClick={onResetVisualizationOnly}
+          title="Reset controls in this tab only"
+          style={{ borderRadius: 8, padding: '10px 12px', fontWeight: 700 }}
+        >
+          Reset (this tab)
+        </button>
+      </div>
       {/* Base Size Control */}
       <div className="control-group">
         <label htmlFor="sizeMultiplier" className="control-label">

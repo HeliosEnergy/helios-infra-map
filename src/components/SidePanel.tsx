@@ -117,6 +117,19 @@ interface SidePanelProps {
   onMarkPlantsDownloaded: (plantIds: string[]) => void;
   onClearDownloadedPlants: () => void;
 
+  // Global filter reset
+  onResetAllFilters: () => void;
+  onResetLayersFiltersOnly: () => void;
+  layersFiltersResetNonce: number;
+  onResetLegendOnly: () => void;
+  legendResetNonce: number;
+  onResetVisualizationOnly: () => void;
+  visualizationResetNonce: number;
+  onResetIcpOnly: () => void;
+  icpResetNonce: number;
+  onResetDataOnly: () => void;
+  dataResetNonce: number;
+
   // Distance measurement
   isMeasuringDistance: boolean;
   measuredDistanceMiles: number | null;
@@ -210,6 +223,18 @@ const SidePanel: React.FC<SidePanelProps> = ({
   downloadedPlantIds,
   onMarkPlantsDownloaded,
   onClearDownloadedPlants,
+
+  // Global filter reset
+  onResetAllFilters,
+  onResetLayersFiltersOnly,
+  layersFiltersResetNonce,
+  onResetLegendOnly,
+  legendResetNonce,
+  onResetVisualizationOnly,
+  visualizationResetNonce,
+  onResetIcpOnly,
+  icpResetNonce,
+  onResetDataOnly,
 
   // Distance measurement
   isMeasuringDistance,
@@ -308,6 +333,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 onClearDistanceMeasurement={onClearDistanceMeasurement}
                 icpSectorFilter={icpSectorFilter}
                 onIcpSectorFilterChange={onIcpSectorFilterChange}
+                onResetLayersFiltersOnly={onResetLayersFiltersOnly}
+                layersFiltersResetNonce={layersFiltersResetNonce}
               />
         );
 
@@ -327,6 +354,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
              onPlantSelect={onPlantSelect}
              onPlantDeselect={onPlantDeselect}
              onApplySelection={onApplySelection}
+             onResetLegendOnly={onResetLegendOnly}
+             legendResetNonce={legendResetNonce}
            />
         );
 
@@ -339,6 +368,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 setCapacityWeight={setCapacityWeight}
                 sizeByOption={sizeByOption}
                 setSizeByOption={setSizeByOption}
+                onResetVisualizationOnly={onResetVisualizationOnly}
+                visualizationResetNonce={visualizationResetNonce}
               />
         );
 
@@ -358,6 +389,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
             downloadedPlantIds={downloadedPlantIds}
             onMarkPlantsDownloaded={onMarkPlantsDownloaded}
             onClearDownloadedPlants={onClearDownloadedPlants}
+            onResetIcpOnly={onResetIcpOnly}
+            icpResetNonce={icpResetNonce}
           />
         );
 
@@ -366,6 +399,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
         return (
           <div className="tab-content-placeholder">
             <h3>Data & Export</h3>
+            <button
+              type="button"
+              className="clear-cache-btn"
+              onClick={onResetDataOnly}
+              title="Reset controls in this tab"
+              style={{ marginBottom: 12 }}
+            >
+              Reset (this tab)
+            </button>
             <DataVisualizations />
             <div className="placeholder-content">
               <h4>Cache Management</h4>
@@ -430,16 +472,26 @@ const SidePanel: React.FC<SidePanelProps> = ({
       {/* Header with collapse button */}
       <div className="panel-header">
         <h2 className="panel-title">Map Controls</h2>
-        {onToggleCollapsed && (
+        <div className="header-actions">
           <button
-            className="collapse-toggle"
-            onClick={onToggleCollapsed}
-            aria-label="Collapse side panel"
-            title="Collapse side panel"
+            type="button"
+            className="reset-filters-btn"
+            onClick={onResetAllFilters}
+            title="Reset all filters and reload all plants"
           >
-            ◀
+            Reset
           </button>
-        )}
+          {onToggleCollapsed && (
+            <button
+              className="collapse-toggle"
+              onClick={onToggleCollapsed}
+              aria-label="Collapse side panel"
+              title="Collapse side panel"
+            >
+              ◀
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab Navigation */}

@@ -12,6 +12,8 @@ type IcpTabProps = {
   downloadedPlantIds: Set<string>;
   onMarkPlantsDownloaded: (plantIds: string[]) => void;
   onClearDownloadedPlants: () => void;
+  onResetIcpOnly: () => void;
+  icpResetNonce: number;
   selectedStates: Set<string>;
   onSelectedStatesChange: (next: Set<string>) => void;
   excessThresholdMw: number;
@@ -145,6 +147,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
   downloadedPlantIds,
   onMarkPlantsDownloaded,
   onClearDownloadedPlants,
+  onResetIcpOnly,
+  icpResetNonce,
   selectedStates,
   onSelectedStatesChange,
   excessThresholdMw,
@@ -158,6 +162,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const [isPlantResearchOpen, setIsPlantResearchOpen] = useState<boolean>(false);
   const [autoSelectionMode, setAutoSelectionMode] = useState<'none' | 'top_all' | 'next_undownloaded'>('none');
+  const [pagingCursorCandidateIndex, setPagingCursorCandidateIndex] = useState<number>(-1);
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Apollo contacts state
@@ -170,6 +175,25 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const downloadMenuRef = useRef<HTMLDivElement>(null);
   const [isAdvancedSelectMenuOpen, setIsAdvancedSelectMenuOpen] = useState<boolean>(false);
   const advancedSelectMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setStateSearch('');
+    setIsStatesOpen(false);
+    setRowsToShow(10);
+    setIsResultsOpen(true);
+    setIsPlantResearchOpen(false);
+    setAutoSelectionMode('none');
+    setPagingCursorCandidateIndex(-1);
+    setContactsByCompany({});
+    setCompanyResearchByCompany({});
+    setContactsError(null);
+    setIsDownloadMenuOpen(false);
+    setIsAdvancedSelectMenuOpen(false);
+    setPlantQuestion('');
+    setPlantAnswer('');
+    setPlantCitations([]);
+    setPlantResearchError(null);
+  }, [icpResetNonce]);
 
   const [plantQuestion, setPlantQuestion] = useState<string>('');
   const [plantAnswer, setPlantAnswer] = useState<string>('');
@@ -313,21 +337,21 @@ const IcpTab: React.FC<IcpTabProps> = ({
   }, [exportableSelectedRows, rowsToShow]);
 
   const advancedSelectCounts = useMemo(() => {
-    const undownloaded = candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
 
-    // Count for "Next N" (page forward through undownloaded).
-    const selectedIds = new Set(selectedCandidateRows.map((r) => r.plant.id));
-    let startIndex = 0;
-    for (let i = 0; i < undownloaded.length; i += 1) {
-      if (selectedIds.has(undownloaded[i]!.plant.id)) {
-        startIndex = i + 1;
-      }
+    // Count for "Next N": page forward by candidate position, but select the next N *undownloaded* plants.
+    // This avoids "losing" slots when the current selection includes downloaded rows.
+    const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
+
+    let nextCount = 0;
+    for (let i = startIndex + 1; i < candidates.length && nextCount < limit; i += 1) {
+      const plantId = candidates[i]!.plant.id;
+      if (downloadedPlantIds.has(plantId)) continue;
+      nextCount += 1;
     }
-    const nextCount = Math.max(0, Math.min(undownloaded.length - startIndex, limit));
 
     return { nextCount };
-  }, [candidates, downloadedPlantIds, rowsToShow, selectedCandidateRows]);
+  }, [candidates, downloadedPlantIds, pagingCursorCandidateIndex, rowsToShow]);
 
   const selectedPlantForResearch = useMemo(() => {
     if (selectedCandidateRows.length !== 1) return null;
@@ -356,6 +380,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
       if (selectedPlantIds.has(row.plant.id)) onPlantDeselect(row.plant.id);
     });
     setAutoSelectionMode('none');
+    setPagingCursorCandidateIndex(-1);
   };
 
   const selectTopCandidates = useCallback(() => {
@@ -364,29 +389,37 @@ const IcpTab: React.FC<IcpTabProps> = ({
     selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
     nextIds.forEach((id) => onPlantSelect(id));
     setAutoSelectionMode('top_all');
+    setPagingCursorCandidateIndex(top.length > 0 ? Math.min(candidates.length - 1, top.length - 1) : -1);
   }, [candidates, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
 
   const selectNextUndownloadedCandidates = useCallback(() => {
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
-    const undownloaded = candidates.filter(({ plant }) => !downloadedPlantIds.has(plant.id));
+    // "Next" means: start after the paging cursor (candidate rank), then pick the next N undownloaded plants.
+    const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
 
-    // "Next" means: take the next batch after the current selection within the sorted undownloaded list.
-    // If nothing is selected, start from the top.
-    const selectedIds = new Set(selectedCandidateRows.map((r) => r.plant.id));
-    let startIndex = 0;
-    for (let i = 0; i < undownloaded.length; i += 1) {
-      if (selectedIds.has(undownloaded[i]!.plant.id)) {
-        startIndex = i + 1;
-      }
+    const nextIds: string[] = [];
+    let lastIncludedIdx = -1;
+    for (let i = startIndex + 1; i < candidates.length && nextIds.length < limit; i += 1) {
+      const plantId = candidates[i]!.plant.id;
+      if (downloadedPlantIds.has(plantId)) continue;
+      nextIds.push(plantId);
+      lastIncludedIdx = i;
     }
-
-    const nextIds = undownloaded.slice(startIndex, startIndex + limit).map((r) => r.plant.id);
     if (nextIds.length === 0) return;
 
     selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
     nextIds.forEach((id) => onPlantSelect(id));
     setAutoSelectionMode('next_undownloaded');
-  }, [candidates, downloadedPlantIds, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
+    if (lastIncludedIdx >= 0) setPagingCursorCandidateIndex(lastIncludedIdx);
+  }, [
+    candidates,
+    downloadedPlantIds,
+    onPlantDeselect,
+    onPlantSelect,
+    pagingCursorCandidateIndex,
+    rowsToShow,
+    selectedCandidateRows,
+  ]);
 
   const lastRowsToShowRef = useRef<number>(rowsToShow);
   useEffect(() => {
@@ -673,6 +706,17 @@ const IcpTab: React.FC<IcpTabProps> = ({
       <h3>ICP Candidates</h3>
       <div className="placeholder-content">
         <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="preset-button"
+              onClick={onResetIcpOnly}
+              title="Reset filters in this tab only"
+              style={{ borderRadius: 8, padding: '10px 12px', fontWeight: 700 }}
+            >
+              Reset (this tab)
+            </button>
+          </div>
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ fontWeight: 600 }}>States</div>
             <div style={{ position: 'relative' }} ref={statesDropdownRef}>

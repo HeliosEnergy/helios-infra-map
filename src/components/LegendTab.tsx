@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './LegendTab.css';
 import type { PowerPlant } from '../models/PowerPlant';
 import PlantSearch from './PlantSearch';
@@ -19,6 +19,9 @@ interface LegendTabProps {
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
   onApplySelection: () => void;
+
+  onResetLegendOnly: () => void;
+  legendResetNonce: number;
 }
 
 const LegendTab: React.FC<LegendTabProps> = ({
@@ -35,10 +38,18 @@ const LegendTab: React.FC<LegendTabProps> = ({
   onPlantSelect,
   onPlantDeselect,
   onApplySelection,
+  onResetLegendOnly,
+  legendResetNonce,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'active'>('name');
   const [groupByCategory, setGroupByCategory] = useState(false);
+
+  useEffect(() => {
+    setSearchQuery('');
+    setSortBy('name');
+    setGroupByCategory(false);
+  }, [legendResetNonce]);
 
   // Power plant colors (matching the main app)
   const POWER_PLANT_COLORS: Record<string, [number, number, number]> = {
@@ -174,6 +185,15 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
           </div>
 
           <div className="filter-controls">
+            <button
+              type="button"
+              className="legend-select-all-btn"
+              onClick={onResetLegendOnly}
+              title="Reset filters in this tab only"
+              style={{ marginRight: 8 }}
+            >
+              Reset (this tab)
+            </button>
             <select
               value={sortBy}
               onChange={(_e) => setSortBy(_e.target.value as 'name' | 'active')}

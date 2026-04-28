@@ -10,7 +10,6 @@ export type ProximityAnalysisParams = {
   showOnlyNearbyPlants: boolean;
   lineIndex: RBush<LineSegment> | null;
   proximityDistance: number;
-  selectedPlantIds: Set<string>;
 };
 
 export function useProximityAnalysis({
@@ -18,17 +17,12 @@ export function useProximityAnalysis({
   showOnlyNearbyPlants,
   lineIndex,
   proximityDistance,
-  selectedPlantIds,
 }: ProximityAnalysisParams) {
   return useMemo(() => {
     const filteredPowerPlants: PowerPlant[] = [];
     const nearbyPlants: PowerPlant[] = [];
 
     for (const plant of powerPlants) {
-      if (selectedPlantIds.size > 0 && !selectedPlantIds.has(plant.id)) {
-        continue;
-      }
-
       if (!showOnlyNearbyPlants || !lineIndex) {
         filteredPowerPlants.push(plant);
         continue;
@@ -54,5 +48,5 @@ export function useProximityAnalysis({
       nearbyPlants,
       proximityPlantCount: nearbyPlants.length,
     };
-  }, [powerPlants, showOnlyNearbyPlants, lineIndex, proximityDistance, selectedPlantIds]);
+  }, [powerPlants, showOnlyNearbyPlants, lineIndex, proximityDistance]);
 }

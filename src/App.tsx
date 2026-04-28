@@ -329,6 +329,12 @@ function App() {
   const [filteredStatuses, setFilteredStatuses] = useState<Set<string>>(new Set());
   const [isFilterStateReady, setIsFilterStateReady] = useState(false);
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
+  const [, setFiltersResetNonce] = useState<number>(0);
+  const [layersFiltersResetNonce, setLayersFiltersResetNonce] = useState<number>(0);
+  const [legendResetNonce, setLegendResetNonce] = useState<number>(0);
+  const [visualizationResetNonce, setVisualizationResetNonce] = useState<number>(0);
+  const [icpResetNonce, setIcpResetNonce] = useState<number>(0);
+  const [dataResetNonce, setDataResetNonce] = useState<number>(0);
   const [downloadedPlantIds, setDownloadedPlantIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('icp-downloaded-plant-ids-v1');
@@ -564,6 +570,94 @@ function App() {
     setDownloadedPlantIds(new Set());
   }, []);
 
+  const handleResetAllFilters = useCallback(() => {
+    // Clear selection so all plants show again.
+    setSelectedPlantIds(new Set());
+
+    // Reset proximity filter + measurement.
+    setShowOnlyNearbyPlants(false);
+    setSliderValue(0);
+    setProximityDistance(0);
+    setIsMeasuringDistance(false);
+    setDistancePoints([]);
+
+    // Reset ICP filters.
+    setIcpSelectedStates(new Set());
+    setIcpExcessThresholdMw(0);
+    setIcpSectorFilter('all');
+
+    // Reset numeric filters.
+    setMinCapacityFactor(0);
+    setMaxCapacityFactor(100);
+    setMinPowerOutput(powerRange.min);
+    setMaxPowerOutput(powerRange.max);
+
+    // Reset sources/statuses/countries to defaults.
+    setFilteredSources(new Set(allSourcesInData));
+    setHasInitializedSources(true);
+    setFilteredStatuses(new Set(allStatuses));
+
+    // Back to US-only default (matches initial behavior).
+    setEnabledCountries(new Set(['US']));
+
+    // Nudge UI-only filter components to reset their internal state.
+    setFiltersResetNonce((n) => n + 1);
+  }, [allSourcesInData, allStatuses, powerRange.max, powerRange.min]);
+
+  const handleResetLayersFiltersOnly = useCallback(() => {
+    // Reset proximity filter + measurement (belongs to Layers & Filters tab).
+    setShowOnlyNearbyPlants(false);
+    setSliderValue(0);
+    setProximityDistance(0);
+    setIsMeasuringDistance(false);
+    setDistancePoints([]);
+
+    // Reset numeric filters (Layers & Filters tab).
+    setMinCapacityFactor(0);
+    setMaxCapacityFactor(100);
+    setMinPowerOutput(powerRange.min);
+    setMaxPowerOutput(powerRange.max);
+
+    // Reset sources/statuses/countries (Layers & Filters tab).
+    setFilteredSources(new Set(allSourcesInData));
+    setHasInitializedSources(true);
+    setFilteredStatuses(new Set(allStatuses));
+    setEnabledCountries(new Set(['US']));
+
+    // Reset only the Layers & Filters tab UI state.
+    setLayersFiltersResetNonce((n) => n + 1);
+  }, [allSourcesInData, allStatuses, powerRange.max, powerRange.min]);
+
+  const handleResetLegendOnly = useCallback(() => {
+    // Legend tab controls source visibility and cable visibility.
+    setFilteredSources(new Set(allSourcesInData));
+    setHasInitializedSources(true);
+    setShowWfsCables(false);
+
+    // Reset Legend tab UI-only state.
+    setLegendResetNonce((n) => n + 1);
+  }, [allSourcesInData]);
+
+  const handleResetVisualizationOnly = useCallback(() => {
+    setSizeMultiplier(2);
+    setCapacityWeight(1);
+    setSizeByOption('nameplate_capacity');
+    setVisualizationResetNonce((n) => n + 1);
+  }, []);
+
+  const handleResetIcpOnly = useCallback(() => {
+    // Convention: empty set means "all states".
+    setIcpSelectedStates(new Set());
+    setIcpExcessThresholdMw(0);
+    setIcpSectorFilter('all');
+    setIcpResetNonce((n) => n + 1);
+  }, []);
+
+  const handleResetDataOnly = useCallback(() => {
+    // No persistent filters in Data & Export today; keep for consistency.
+    setDataResetNonce((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem('icp-downloaded-plant-ids-v1', JSON.stringify(Array.from(downloadedPlantIds)));
@@ -615,7 +709,6 @@ function App() {
     showOnlyNearbyPlants,
     lineIndex,
     proximityDistance: debouncedDistance,
-    selectedPlantIds,
   });
 
   const icpPowerPlants = useMemo(
@@ -981,6 +1074,17 @@ function App() {
         downloadedPlantIds={downloadedPlantIds}
         onMarkPlantsDownloaded={handleMarkPlantsDownloaded}
         onClearDownloadedPlants={handleClearDownloadedPlants}
+        onResetAllFilters={handleResetAllFilters}
+        onResetLayersFiltersOnly={handleResetLayersFiltersOnly}
+        layersFiltersResetNonce={layersFiltersResetNonce}
+        onResetLegendOnly={handleResetLegendOnly}
+        legendResetNonce={legendResetNonce}
+        onResetVisualizationOnly={handleResetVisualizationOnly}
+        visualizationResetNonce={visualizationResetNonce}
+        onResetIcpOnly={handleResetIcpOnly}
+        icpResetNonce={icpResetNonce}
+        onResetDataOnly={handleResetDataOnly}
+        dataResetNonce={dataResetNonce}
         isMeasuringDistance={isMeasuringDistance}
         measuredDistanceMiles={measuredDistanceMiles}
         onStartDistanceMeasurement={handleStartDistanceMeasurement}
