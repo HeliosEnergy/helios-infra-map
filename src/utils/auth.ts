@@ -15,6 +15,8 @@ export const clearAuthToken = (): void => {
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 };
 
+export const AUTH_EXPIRED_EVENT = 'helios-auth-expired';
+
 export const authenticatedFetch = async (
   input: RequestInfo | URL,
   init?: RequestInit
@@ -25,8 +27,17 @@ export const authenticatedFetch = async (
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(input, {
+  const response = await fetch(input, {
     ...init,
     headers,
   });
+
+  if (response.status === 401) {
+    clearAuthToken();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
+  }
+
+  return response;
 };

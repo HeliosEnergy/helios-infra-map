@@ -162,12 +162,12 @@ const IcpTab: React.FC<IcpTabProps> = ({
   const [isResultsOpen, setIsResultsOpen] = useState<boolean>(true);
   const [isPlantResearchOpen, setIsPlantResearchOpen] = useState<boolean>(false);
   const [autoSelectionMode, setAutoSelectionMode] = useState<'none' | 'top_all' | 'next_undownloaded'>('none');
-  const [pagingCursorCandidateIndex, setPagingCursorCandidateIndex] = useState<number>(-1);
+  const [undownloadedCursorIndex, setUndownloadedCursorIndex] = useState<number>(-1);
   const statesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Apollo contacts state
   const [contactsByCompany, setContactsByCompany] = useState<Record<string, Contact[]>>({});
-  const [, setCompanyResearchByCompany] = useState<Record<string, CompanyResearchSummary>>({});
+  const [companyResearchByCompany, setCompanyResearchByCompany] = useState<Record<string, CompanyResearchSummary>>({});
   const [isLoadingContacts, setIsLoadingContacts] = useState<boolean>(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const [isDownloadingCsv2, setIsDownloadingCsv2] = useState<boolean>(false);
@@ -181,7 +181,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     setIsResultsOpen(true);
     setIsPlantResearchOpen(false);
     setAutoSelectionMode('none');
-    setPagingCursorCandidateIndex(-1);
+    setUndownloadedCursorIndex(-1);
     setContactsByCompany({});
     setCompanyResearchByCompany({});
     setContactsError(null);
@@ -306,6 +306,10 @@ const IcpTab: React.FC<IcpTabProps> = ({
     return candidates.filter((row) => selectedPlantIds.has(row.plant.id));
   }, [candidates, selectedPlantIds]);
 
+  const undownloadedCandidates = useMemo(() => {
+    return candidates.filter((row) => !downloadedPlantIds.has(row.plant.id));
+  }, [candidates, downloadedPlantIds]);
+
   const displayedCandidates = useMemo(() => {
     if (rowsToShow <= 0) return candidates;
     return candidates.slice(0, rowsToShow);
@@ -319,26 +323,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
   const advancedSelectCounts = useMemo(() => {
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
-
-    // Count for "Next N": prefer undownloaded, but if everything is downloaded, still allow paging.
-    const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
-
-    let nextCount = 0;
-    for (let i = startIndex + 1; i < candidates.length && nextCount < limit; i += 1) {
-      const plantId = candidates[i]!.plant.id;
-      if (downloadedPlantIds.has(plantId)) continue;
-      nextCount += 1;
-    }
-
-    if (nextCount === 0) {
-      // Fallback: all remaining plants are downloaded; still allow selecting next N.
-      for (let i = startIndex + 1; i < candidates.length && nextCount < limit; i += 1) {
-        nextCount += 1;
-      }
-    }
-
-    return { nextCount };
-  }, [candidates, downloadedPlantIds, pagingCursorCandidateIndex, rowsToShow]);
+    const remaining = Math.max(0, undownloadedCandidates.length - (undownloadedCursorIndex + 1));
+    return { nextCount: Math.min(limit, remaining) };
+  }, [rowsToShow, undownloadedCandidates.length, undownloadedCursorIndex]);
 
   const selectedPlantForResearch = useMemo(() => {
     if (selectedCandidateRows.length !== 1) return null;
@@ -367,7 +354,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
       if (selectedPlantIds.has(row.plant.id)) onPlantDeselect(row.plant.id);
     });
     setAutoSelectionMode('none');
-    setPagingCursorCandidateIndex(-1);
+    setUndownloadedCursorIndex(-1);
   };
 
   const selectTopCandidates = useCallback(() => {
@@ -376,45 +363,30 @@ const IcpTab: React.FC<IcpTabProps> = ({
     selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
     nextIds.forEach((id) => onPlantSelect(id));
     setAutoSelectionMode('top_all');
-    setPagingCursorCandidateIndex(top.length > 0 ? Math.min(candidates.length - 1, top.length - 1) : -1);
+    // Important UX: "Select all" should NOT advance the undownloaded paging cursor.
+    // Users expect "Next N" to page through undownloaded plants independently.
+    setUndownloadedCursorIndex(-1);
   }, [candidates, onPlantDeselect, onPlantSelect, rowsToShow, selectedCandidateRows]);
 
   const selectNextUndownloadedCandidates = useCallback(() => {
     const limit = rowsToShow <= 0 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(rowsToShow));
-    // "Next" means: start after the paging cursor (candidate rank), then pick the next N.
-    // Prefer undownloaded plants, but allow re-selecting downloaded when needed.
-    const startIndex = Math.max(-1, Math.min(pagingCursorCandidateIndex, candidates.length - 1));
-
-    const nextIds: string[] = [];
-    let lastIncludedIdx = -1;
-    for (let i = startIndex + 1; i < candidates.length && nextIds.length < limit; i += 1) {
-      const plantId = candidates[i]!.plant.id;
-      if (downloadedPlantIds.has(plantId)) continue;
-      nextIds.push(plantId);
-      lastIncludedIdx = i;
-    }
-    if (nextIds.length === 0) {
-      // Fallback: all remaining are downloaded, but user still wants to page/select.
-      for (let i = startIndex + 1; i < candidates.length && nextIds.length < limit; i += 1) {
-        const plantId = candidates[i]!.plant.id;
-        nextIds.push(plantId);
-        lastIncludedIdx = i;
-      }
-    }
-    if (nextIds.length === 0) return;
+    // "Next N" pages through the *undownloaded-only* list for predictable UX.
+    const start = Math.max(-1, Math.min(undownloadedCursorIndex, undownloadedCandidates.length - 1));
+    const batch = undownloadedCandidates.slice(start + 1, start + 1 + limit);
+    if (batch.length === 0) return;
+    const nextIds = batch.map((r) => r.plant.id);
 
     selectedCandidateRows.forEach(({ plant }) => onPlantDeselect(plant.id));
     nextIds.forEach((id) => onPlantSelect(id));
     setAutoSelectionMode('next_undownloaded');
-    if (lastIncludedIdx >= 0) setPagingCursorCandidateIndex(lastIncludedIdx);
+    setUndownloadedCursorIndex(start + batch.length);
   }, [
-    candidates,
-    downloadedPlantIds,
     onPlantDeselect,
     onPlantSelect,
-    pagingCursorCandidateIndex,
     rowsToShow,
     selectedCandidateRows,
+    undownloadedCandidates,
+    undownloadedCursorIndex,
   ]);
 
   const lastRowsToShowRef = useRef<number>(rowsToShow);
@@ -563,6 +535,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
         'Phone',
         'Stage',
         'Person Linkedin Url',
+        'AI Data Center Experience',
       ];
 
       const lines: string[] = [header.map(toCsvValue).join(',')];
@@ -593,6 +566,16 @@ const IcpTab: React.FC<IcpTabProps> = ({
             ? 'Commercial/Industrial'
             : 'Other';
 
+        const research = companyResearchByCompany[best.company];
+        const aiExperience =
+          !research
+            ? ''
+            : research.ai_data_center_experience === 'yes'
+            ? `Yes${research.ai_data_center_details ? ` - ${research.ai_data_center_details}` : ''}`
+            : research.ai_data_center_experience === 'no'
+            ? 'No'
+            : 'Info not available';
+
         const { firstName, lastName } = splitName(best.name);
         const row = [
           plant.name,
@@ -608,6 +591,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
           best.phone || '',
           'Prospect',
           best.linkedin_url || '',
+          aiExperience,
         ];
         lines.push(row.map(toCsvValue).join(','));
       });
@@ -631,6 +615,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
     fetchPublicContactsForSelected,
     getContactsForPlant,
     hasContactsForAllSelected,
+    companyResearchByCompany,
     onMarkPlantsDownloaded,
     onPlantDeselect,
   ]);
@@ -802,6 +787,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
               className="clear-cache-btn"
               onClick={selectTopCandidates}
               style={{ minWidth: 190 }}
+              title="Selects the top rows shown (includes downloaded)"
             >
               Select all ({rowsToShow <= 0 ? candidates.length : Math.min(rowsToShow, candidates.length)})
             </button>
@@ -812,7 +798,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                 onClick={() => setIsAdvancedSelectMenuOpen((v) => !v)}
                 disabled={candidates.length === 0}
                 style={{ minWidth: 190, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
-                title="Advanced selection options"
+                title="Advanced selection: page through undownloaded plants (Next N)"
               >
                 <span>Advanced select</span>
                 <span aria-hidden="true" style={{ opacity: 0.8 }}>
@@ -843,7 +829,8 @@ const IcpTab: React.FC<IcpTabProps> = ({
                       setIsAdvancedSelectMenuOpen(false);
                       selectNextUndownloadedCandidates();
                     }}
-                    disabled={pagingCursorCandidateIndex >= candidates.length - 1}
+                    disabled={advancedSelectCounts.nextCount === 0}
+                    title="Select the next N plants that have not been downloaded yet"
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -859,7 +846,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                     <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
                       Next {rowsToShow <= 0 ? 'All' : rowsToShow} ({advancedSelectCounts.nextCount})
                     </div>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                    <div style={{ fontSize: 12, color: '#374151' }}>
                       Page forward through not-downloaded plants
                     </div>
                   </button>
@@ -871,6 +858,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
               className="clear-cache-btn"
               onClick={clearSelectedCandidates}
               style={{ minWidth: 190 }}
+              title="Clear the current selection (does not affect downloaded status)"
             >
               Clear selected
             </button>
@@ -928,7 +916,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
                   ? 'Loading contacts...'
                   : !hasContactsForAllSelected
                   ? 'Fetch contacts first to enable CSV download'
-                  : 'Download contacts CSV (13 columns, one contact per plant)'
+                  : 'Download contacts CSV (14 columns, one contact per plant)'
               }
             >
               {isDownloadingCsv2 ? 'Downloading…' : 'Download CSV'}

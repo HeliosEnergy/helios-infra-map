@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import './PasswordGate.css';
 import { PasswordGateProvider } from '../contexts/PasswordGateContext';
 import {
+  AUTH_EXPIRED_EVENT,
   authenticatedFetch as authenticatedFetchWithToken,
   clearAuthToken,
   getAuthToken,
@@ -32,6 +33,15 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     setInfo('');
     setIsUnlocked(false);
   }, []);
+
+  useEffect(() => {
+    const onExpired = () => {
+      setError('Session expired. Please unlock again.');
+      handleLogout();
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, [handleLogout]);
 
   useEffect(() => {
     let cancelled = false;

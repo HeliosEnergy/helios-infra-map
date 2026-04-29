@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const DEFAULT_TOKEN_TTL_SECONDS = 60 * 60; // 1h
+const DEFAULT_TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24h
 
 const base64UrlEncode = (value) =>
   Buffer.from(value)
