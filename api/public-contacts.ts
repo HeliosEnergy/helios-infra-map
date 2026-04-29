@@ -130,9 +130,6 @@ const extractJsonObject = (content: string): string => {
 const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company'>> & PublicContactEntry): string => {
   const lines = [
     'Research the public business contact information for this power plant owner/operator.',
-    'Goal: find the best contact for a data center power deal (PPA procurement / power supply agreement).',
-    'Top priority: find a relevant, verified email address (do your best to find emails for as many entries as possible).',
-    'Prefer contacts in energy/power procurement, business development, commercial, strategic partnerships, origination, or data center power.',
     '',
     `Plant name: ${normalizeString(entry.plant_name) || 'Unknown'}`,
     `State: ${normalizeString(entry.state) || 'Unknown'}`,
@@ -144,8 +141,6 @@ const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company
     '- Prefer official company websites and official contact pages.',
     '- Exclude gridinfo.com and other third-party directories/aggregators.',
     '- If plant-specific contacts are not public, return the best owner/operator business contact.',
-    '- Prioritize contacts most likely to work on data center / PPA deals (procurement, BD, commercial, partnerships, origination).',
-    '- The most important field is a verified email; try hard to find it from official sources.',
     '- Return at most 2 contacts.',
     '- Also determine whether the owner/operator has worked on building AI data centers before.',
     '- Do not guess missing fields.',
