@@ -548,8 +548,6 @@ const IcpTab: React.FC<IcpTabProps> = ({
           return score(b) - score(a);
         })[0];
 
-        if (!best) return;
-
         const city = String(plant.rawData?.['City (Site Name)'] || '').trim();
         const state = String(plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '').trim();
         const country = String(plant.country || '').trim();
@@ -566,7 +564,9 @@ const IcpTab: React.FC<IcpTabProps> = ({
             ? 'Commercial/Industrial'
             : 'Other';
 
-        const research = companyResearchByCompany[best.company];
+        const fallbackCompany = getOwner(plant) || getOperator(plant) || '';
+        const companyName = best?.company || fallbackCompany;
+        const research = companyName ? companyResearchByCompany[companyName] : undefined;
         const aiExperience =
           !research
             ? ''
@@ -576,7 +576,7 @@ const IcpTab: React.FC<IcpTabProps> = ({
             ? 'No'
             : 'Info not available';
 
-        const { firstName, lastName } = splitName(best.name);
+        const { firstName, lastName } = splitName(best?.name || '');
         const row = [
           plant.name,
           location,
@@ -585,12 +585,12 @@ const IcpTab: React.FC<IcpTabProps> = ({
           ippUtilityType,
           firstName,
           lastName,
-          best.title || '',
-          best.company || '',
-          best.email || '',
-          best.phone || '',
+          best?.title || '',
+          companyName || '',
+          best?.email || '',
+          best?.phone || '',
           'Prospect',
-          best.linkedin_url || '',
+          best?.linkedin_url || '',
           aiExperience,
         ];
         lines.push(row.map(toCsvValue).join(','));
