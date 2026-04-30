@@ -141,6 +141,9 @@ const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company
     '- Prefer official company websites and official contact pages.',
     '- Exclude gridinfo.com and other third-party directories/aggregators.',
     '- If plant-specific contacts are not public, return the best owner/operator business contact.',
+    '- Prioritize finding at least 1 named person (name + title) relevant to energy operations, power plants, power generation, development, grid/utility operations, or executive leadership.',
+    '- If no email/phone is published for a person, still return their name and title (leave email/phone empty) as long as it is verified on an official source page.',
+    '- If no named people are publicly listed, return a general contact (e.g., contact form URL or a generic inbox email/phone) for the owner/operator.',
     '- Return at most 2 contacts.',
     '- Also determine whether the owner/operator has worked on building AI data centers before.',
     '- Do not guess missing fields.',
@@ -194,13 +197,16 @@ const sanitizePerplexityContacts = (
     const email = normalizeString(contact?.email);
     const phone = normalizeString(contact?.phone);
     const linkedinUrl = normalizeUrl(contact?.linkedin_url, { allowLinkedin: true });
+    const name = normalizeString(contact?.name);
+    const title = normalizeString(contact?.title);
 
     if (!sourceUrl) continue;
-    if (!email && !phone && !linkedinUrl) continue;
+    // Keep name/title-only contacts too (many official sites list leadership without direct email/phone).
+    if (!name && !title && !email && !phone && !linkedinUrl) continue;
 
     results.push({
-      name: normalizeString(contact?.name),
-      title: normalizeString(contact?.title),
+      name,
+      title,
       email,
       phone,
       linkedin_url: linkedinUrl,
