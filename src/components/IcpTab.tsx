@@ -542,11 +542,27 @@ const IcpTab: React.FC<IcpTabProps> = ({
 
       selectedExportRows.forEach(({ plant }) => {
         const contacts = getContactsForPlant(plant);
-        const best = [...contacts].sort((a, b) => {
-          const score = (c: Contact) =>
-            (c.email ? 3 : 0) + (c.phone ? 2 : 0) + (c.linkedin_url ? 1 : 0);
-          return score(b) - score(a);
-        })[0];
+        const pickBestForCsv = (list: Contact[]): Contact | null => {
+          if (!Array.isArray(list) || list.length === 0) return null;
+
+          const norm = (v: string | undefined) => String(v || '').trim();
+          const hasName = (c: Contact) => norm(c.name).length > 0;
+          const hasTitle = (c: Contact) => norm(c.title).length > 0;
+
+          // Tier A: name + title
+          const tierA = list.find((c) => hasName(c) && hasTitle(c));
+          if (tierA) return tierA;
+
+          // Tier B: name only
+          const tierB = list.find((c) => hasName(c));
+          if (tierB) return tierB;
+
+          // Do not fabricate names (roles or "Company Contact"). If no real person name is present,
+          // leave name fields empty so downstream enrichment can decide how to handle it.
+          return null;
+        };
+
+        const best = pickBestForCsv(contacts);
 
         const city = String(plant.rawData?.['City (Site Name)'] || '').trim();
         const state = String(plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '').trim();
@@ -576,16 +592,21 @@ const IcpTab: React.FC<IcpTabProps> = ({
             ? 'No'
             : 'Info not available';
 
-        const { firstName, lastName } = splitName(best?.name || '');
+        const bestName = String(best?.name || '').trim();
+        const bestTitle = String(best?.title || '').trim();
+
+        const nameForExport =
+          bestName.length > 0 ? { ...splitName(bestName), title: bestTitle } : { firstName: '', lastName: '', title: '' };
+
         const row = [
           plant.name,
           location,
           energySource,
           plantType,
           ippUtilityType,
-          firstName,
-          lastName,
-          best?.title || '',
+          nameForExport.firstName,
+          nameForExport.lastName,
+          nameForExport.title,
           companyName || '',
           best?.email || '',
           best?.phone || '',

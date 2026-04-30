@@ -143,8 +143,9 @@ const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company
     '- If plant-specific contacts are not public, return the best owner/operator business contact.',
     '- Prioritize finding at least 1 named person (name + title) relevant to energy operations, power plants, power generation, development, grid/utility operations, or executive leadership.',
     '- If no email/phone is published for a person, still return their name and title (leave email/phone empty) as long as it is verified on an official source page.',
+    '- If the official site does not list people, you may use other reputable public sources for name/title verification (e.g., official press releases, regulatory filings, credible news/industry publications, or a LinkedIn profile page).',
     '- If no named people are publicly listed, return a general contact (e.g., contact form URL or a generic inbox email/phone) for the owner/operator.',
-    '- Return at most 2 contacts.',
+    '- Return at most 5 contacts (we will pick the best match).',
     '- Also determine whether the owner/operator has worked on building AI data centers before.',
     '- Do not guess missing fields.',
     '- If a field cannot be verified from a source, leave it empty.',
@@ -172,6 +173,83 @@ const buildPerplexityPrompt = (entry: Required<Pick<PublicContactEntry, 'company
     '}',
   ];
 
+  return lines.join('\n');
+};
+
+const buildPerplexityLeadershipPrompt = (
+  entry: Required<Pick<PublicContactEntry, 'company'>> & PublicContactEntry
+): string => {
+  const lines = [
+    'Find named people (real individuals) and their titles for this power plant owner/operator.',
+    '',
+    `Plant name: ${normalizeString(entry.plant_name) || 'Unknown'}`,
+    `State: ${normalizeString(entry.state) || 'Unknown'}`,
+    `Owner company: ${entry.company}`,
+    `Operator company: ${normalizeString(entry.operator) || 'Unknown'}`,
+    `Existing website hint: ${normalizeString(entry.url) || 'Unknown'}`,
+    '',
+    'Rules:',
+    '- Goal: return at least 1 real person name and title if any public source exists.',
+    '- Prioritize official sources: leadership/team/about pages, investor relations, executive bios, press releases.',
+    '- If official sources do not list people, use other reputable public sources (regulatory filings, credible news, or LinkedIn profile pages).',
+    '- Do not invent or guess names/titles. Only return what is explicitly stated on the source page.',
+    '- Each contact must include source_url pointing to where the name/title is stated.',
+    '- Return up to 10 contacts.',
+    '- Return only valid JSON. No markdown, no commentary.',
+    '',
+    'Return exactly this JSON shape:',
+    '{',
+    '  "contacts": [',
+    '    {',
+    '      "name": "",',
+    '      "title": "",',
+    '      "email": "",',
+    '      "phone": "",',
+    '      "linkedin_url": "",',
+    '      "source_url": ""',
+    '    }',
+    '  ]',
+    '}',
+  ];
+  return lines.join('\n');
+};
+
+const buildPerplexityAnyEmployeePrompt = (
+  entry: Required<Pick<PublicContactEntry, 'company'>> & PublicContactEntry
+): string => {
+  const lines = [
+    'Find any real employee contact (not limited to leadership) for this power plant owner/operator.',
+    '',
+    `Plant name: ${normalizeString(entry.plant_name) || 'Unknown'}`,
+    `State: ${normalizeString(entry.state) || 'Unknown'}`,
+    `Owner company: ${entry.company}`,
+    `Operator company: ${normalizeString(entry.operator) || 'Unknown'}`,
+    `Existing website hint: ${normalizeString(entry.url) || 'Unknown'}`,
+    '',
+    'Rules:',
+    '- Goal: return at least 1 real person name and title if any public source exists.',
+    '- Do NOT limit to executives. Accept sales, business development, partnerships, operations, plant/facility management, engineering, real estate, procurement, or any other employee role.',
+    '- Prioritize official sources first (team pages, press releases, staff directories, speaker bios, investor relations).',
+    '- If the official site does not list people, use other reputable public sources (regulatory filings, credible news/industry publications, or LinkedIn profile pages).',
+    '- Do not invent or guess names/titles. Only return what is explicitly stated on the source page.',
+    '- Each contact must include source_url pointing to where the name/title is stated.',
+    '- Return up to 10 contacts.',
+    '- Return only valid JSON. No markdown, no commentary.',
+    '',
+    'Return exactly this JSON shape:',
+    '{',
+    '  "contacts": [',
+    '    {',
+    '      "name": "",',
+    '      "title": "",',
+    '      "email": "",',
+    '      "phone": "",',
+    '      "linkedin_url": "",',
+    '      "source_url": ""',
+    '    }',
+    '  ]',
+    '}',
+  ];
   return lines.join('\n');
 };
 
@@ -216,11 +294,22 @@ const sanitizePerplexityContacts = (
 
   const seen = new Set<string>();
   return results.filter((contact) => {
-    const key = `${contact.email}::${contact.phone || ''}::${contact.linkedin_url || ''}`;
+    // Deduplicate conservatively. Email/phone/linkedin may be empty for valid name/title-only contacts,
+    // so include name/title and (as a last resort) company to avoid collapsing distinct people.
+    const key = [
+      contact.email || '',
+      contact.phone || '',
+      contact.linkedin_url || '',
+      contact.name || '',
+      contact.title || '',
+      contact.company || '',
+    ]
+      .map((v) => String(v).trim().toLowerCase())
+      .join('::');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 2);
+  }).slice(0, 5);
 };
 
 type CompanyResearchSummary = {
@@ -258,42 +347,67 @@ const fetchPerplexityContacts = async (
     throw new Error('PERPLEXITY_API_KEY is not configured.');
   }
 
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: process.env.PERPLEXITY_MODEL || 'sonar-pro',
-      temperature: 0,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a careful web research assistant. Return only verified public business contact information as JSON. Never include gridinfo.com or other directory/aggregator results.',
-        },
-        {
-          role: 'user',
-          content: buildPerplexityPrompt(entry),
-        },
-      ],
-    }),
-  });
+  const callPerplexity = async (userPrompt: string) => {
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: process.env.PERPLEXITY_MODEL || 'sonar-pro',
+        temperature: 0,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a careful web research assistant. Return only verified public business contact information as JSON. Never include gridinfo.com or other directory/aggregator results.',
+          },
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+      }),
+    });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Perplexity request failed (${response.status}): ${text}`);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Perplexity request failed (${response.status}): ${text}`);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = normalizeString(payload.choices?.[0]?.message?.content);
+    return parsePerplexityJson(content);
+  };
+
+  const parsedA = await callPerplexity(buildPerplexityPrompt(entry));
+  const contactsA = sanitizePerplexityContacts(entry.company, parsedA);
+  const companyResearch = sanitizeCompanyResearchSummary(parsedA);
+
+  // If we didn't get any real person names, do a second pass focused on leadership/team extraction.
+  const hasAnyName = contactsA.some((c) => normalizeString(c.name).length > 0);
+  if (hasAnyName) {
+    return { contacts: contactsA, companyResearch };
   }
 
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = normalizeString(payload.choices?.[0]?.message?.content);
-  const parsed = parsePerplexityJson(content);
+  const parsedB = await callPerplexity(buildPerplexityLeadershipPrompt(entry));
+  const contactsB = sanitizePerplexityContacts(entry.company, parsedB);
+
+  const hasAnyNameB = contactsB.some((c) => normalizeString(c.name).length > 0);
+  if (hasAnyNameB) {
+    return { contacts: [...contactsB, ...contactsA], companyResearch };
+  }
+
+  // Third pass: broaden to any employee role (sales/BD/ops/etc.) to maximize name coverage.
+  const parsedC = await callPerplexity(buildPerplexityAnyEmployeePrompt(entry));
+  const contactsC = sanitizePerplexityContacts(entry.company, parsedC);
+
   return {
-    contacts: sanitizePerplexityContacts(entry.company, parsed),
-    companyResearch: sanitizeCompanyResearchSummary(parsed),
+    contacts: [...contactsC, ...contactsB, ...contactsA],
+    companyResearch,
   };
 };
 
