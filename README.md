@@ -127,12 +127,15 @@ To get the project up and running locally:
     DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
     BETTER_AUTH_SECRET=generate-with-npx-auth-secret-or-openssl-rand-base64-32
     BETTER_AUTH_URL=http://localhost:5173
-    ALLOWED_AUTH_EMAILS=person@example.com,teammate@example.com
+    ACCESS_ADMIN_EMAILS=sri@heliosenergy.io
+    RESEND_API_KEY=YOUR_RESEND_API_KEY
+    RESEND_FROM=info@helios.co
+    # Optional bootstrap/admin bypass: ALLOWED_AUTH_EMAILS=person@example.com,teammate@example.com
     # Optional: FIBER_TILES_S3_URL=YOUR_S3_BUCKET_URL_FOR_FIBER_TILES
     # Optional: FIBER_TILE_SIZE=5 # or 2
     # Optional: ALLOWED_ORIGINS=https://your-vercel-domain.vercel.app
     ```
-    You will need a Mapbox Access Token. Better Auth requires the Postgres schema in `better-auth-schema.sql` and only allows users whose normalized email is listed in `ALLOWED_AUTH_EMAILS`.
+    You will need a Mapbox Access Token. Better Auth requires the Postgres schema in `better-auth-schema.sql`. Users are allowed when their normalized email is in the `allowed_auth_emails` table, or in optional bootstrap `ALLOWED_AUTH_EMAILS`. Access requests are emailed through Resend from `RESEND_FROM`.
 4.  **Run in development mode:**
     ```bash
     npm run dev

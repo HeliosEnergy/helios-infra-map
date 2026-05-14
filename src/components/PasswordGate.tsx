@@ -8,11 +8,13 @@ type PasswordGateProps = {
   children: React.ReactNode;
 };
 
-type AuthMode = 'sign-in' | 'sign-up';
+type AuthMode = 'sign-in' | 'sign-up' | 'request-access';
 
 const PasswordGate = ({ children }: PasswordGateProps) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
+  const [reason, setReason] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -26,6 +28,8 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
   const handleLogout = useCallback(() => {
     setEmail('');
     setName('');
+    setCompany('');
+    setReason('');
     setPassword('');
     setError('');
     setInfo('');
@@ -57,6 +61,33 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       const normalizedEmail = email.trim().toLowerCase();
       const trimmedPassword = password.trim();
 
+      if (mode === 'request-access') {
+        const response = await fetch('/api/access-request', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            name: name.trim(),
+            company: company.trim(),
+            reason: reason.trim(),
+          }),
+        });
+        const data = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
+        if (!response.ok) {
+          setError(data.error || 'Failed to submit access request.');
+          return;
+        }
+
+        setInfo(data.message || 'Access request submitted for approval.');
+        setEmail('');
+        setName('');
+        setCompany('');
+        setReason('');
+        return;
+      }
+
       if (mode === 'sign-up') {
         const { error: signUpError } = await authClient.signUp.email({
           email: normalizedEmail,
@@ -85,6 +116,8 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       await refetch();
       setEmail('');
       setName('');
+      setCompany('');
+      setReason('');
       setPassword('');
     } catch {
       setError('Authentication request failed. Please check your connection.');
@@ -113,9 +146,16 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
           >
             Create account
           </button>
+          <button
+            type="button"
+            className={mode === 'request-access' ? 'active' : ''}
+            onClick={() => switchMode('request-access')}
+          >
+            Request access
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
-          {mode === 'sign-up' && (
+          {mode !== 'sign-in' && (
             <>
               <label htmlFor="app-name">Name</label>
               <input
@@ -129,6 +169,19 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
               />
             </>
           )}
+          {mode === 'request-access' && (
+            <>
+              <label htmlFor="app-company">Company</label>
+              <input
+                id="app-company"
+                type="text"
+                value={company}
+                onChange={(event) => setCompany(event.target.value)}
+                autoComplete="organization"
+                placeholder="Company"
+              />
+            </>
+          )}
           <label htmlFor="app-email">Email</label>
           <input
             id="app-email"
@@ -139,20 +192,41 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
             placeholder="you@company.com"
             required
           />
-          <label htmlFor="app-password">Password</label>
-          <input
-            id="app-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
-            placeholder="Enter password"
-            required
-          />
+          {mode === 'request-access' ? (
+            <>
+              <label htmlFor="app-reason">Reason</label>
+              <textarea
+                id="app-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Why do you need access?"
+                rows={3}
+              />
+            </>
+          ) : (
+            <>
+              <label htmlFor="app-password">Password</label>
+              <input
+                id="app-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
+                placeholder="Enter password"
+                required
+              />
+            </>
+          )}
           {error && <p className="password-gate-error">{error}</p>}
           {info && <p className="password-gate-info">{info}</p>}
           <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Please wait...' : mode === 'sign-up' ? 'Create account' : 'Unlock'}
+            {isSubmitting
+              ? 'Please wait...'
+              : mode === 'request-access'
+                ? 'Send request'
+                : mode === 'sign-up'
+                  ? 'Create account'
+                  : 'Unlock'}
           </button>
         </form>
       </div>

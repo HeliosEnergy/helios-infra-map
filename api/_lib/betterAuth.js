@@ -13,11 +13,27 @@ export const normalizeEmail = (email) => String(email || '').trim().toLowerCase(
 export const getAllowedAuthEmails = () =>
   splitCsv(process.env.ALLOWED_AUTH_EMAILS).map((email) => normalizeEmail(email));
 
-export const isEmailAllowed = (email) => {
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const isEmailAllowedByEnv = (email) => {
   const allowedEmails = getAllowedAuthEmails();
   if (allowedEmails.length === 0) return false;
   return allowedEmails.includes(normalizeEmail(email));
 };
+
+export const isEmailAllowedByDb = async (email) => {
+  if (!process.env.DATABASE_URL) return false;
+
+  const result = await pool.query(
+    'select 1 from allowed_auth_emails where email = $1 and revoked_at is null limit 1',
+    [normalizeEmail(email)]
+  );
+  return result.rowCount > 0;
+};
+
+export const isEmailAllowed = async (email) => isEmailAllowedByEnv(email) || (await isEmailAllowedByDb(email));
 
 export const getTrustedOrigins = () => {
   const origins = [
@@ -35,7 +51,7 @@ export const getTrustedOrigins = () => {
 };
 
 export const isBetterAuthConfigured = () =>
-  Boolean(process.env.DATABASE_URL && process.env.BETTER_AUTH_SECRET && getAllowedAuthEmails().length > 0);
+  Boolean(process.env.DATABASE_URL && process.env.BETTER_AUTH_SECRET);
 
 const requireRuntimeAuthConfig = () => {
   if (!process.env.DATABASE_URL) {
@@ -48,16 +64,7 @@ const requireRuntimeAuthConfig = () => {
       message: 'Server auth is not configured. Set BETTER_AUTH_SECRET.',
     });
   }
-  if (getAllowedAuthEmails().length === 0) {
-    throw new APIError('SERVICE_UNAVAILABLE', {
-      message: 'Server auth is not configured. Set ALLOWED_AUTH_EMAILS.',
-    });
-  }
 };
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 export const auth = betterAuth({
   database: pool,
@@ -77,7 +84,7 @@ export const auth = betterAuth({
       requireRuntimeAuthConfig();
 
       const email = normalizeEmail(ctx.body?.email);
-      if (!email || !isEmailAllowed(email)) {
+      if (!email || !(await isEmailAllowed(email))) {
         throw new APIError('UNAUTHORIZED', {
           message: 'This email is not approved for portal access.',
         });

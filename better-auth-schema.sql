@@ -52,3 +52,28 @@ CREATE TABLE IF NOT EXISTS "verification" (
 CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId");
 CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier");
+
+CREATE TABLE IF NOT EXISTS "allowed_auth_emails" (
+  "email" text PRIMARY KEY,
+  "approved_by" text,
+  "approved_at" timestamptz NOT NULL DEFAULT now(),
+  "revoked_at" timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS "access_requests" (
+  "id" bigserial PRIMARY KEY,
+  "email" text NOT NULL UNIQUE,
+  "name" text,
+  "company" text,
+  "reason" text,
+  "status" text NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'approved', 'rejected')),
+  "decision_token" text UNIQUE,
+  "decision_token_expires_at" timestamptz,
+  "requested_at" timestamptz NOT NULL DEFAULT now(),
+  "decided_at" timestamptz,
+  "decided_by" text,
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "access_requests_status_idx" ON "access_requests" ("status");
+CREATE INDEX IF NOT EXISTS "access_requests_decision_token_idx" ON "access_requests" ("decision_token");

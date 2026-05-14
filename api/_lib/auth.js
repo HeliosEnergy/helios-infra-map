@@ -23,7 +23,7 @@ export const requireAuth = async (req, res) => {
   const session = await auth.api.getSession({
     headers: headersFromRequest(req),
   });
-  if (!session?.user?.email || !isEmailAllowed(session.user.email)) {
+  if (!session?.user?.email || !(await isEmailAllowed(session.user.email))) {
     res.status(401).json({ error: 'Unauthorized' });
     return null;
   }
