@@ -1,174 +1,95 @@
 import { useCallback, useEffect, useState } from 'react';
 import './PasswordGate.css';
 import { PasswordGateProvider } from '../contexts/PasswordGateContext';
-import {
-  AUTH_EXPIRED_EVENT,
-  authenticatedFetch as authenticatedFetchWithToken,
-  clearAuthToken,
-  getAuthToken,
-  setAuthToken,
-} from '../utils/auth';
+import { authClient } from '../lib/auth-client';
+import { AUTH_EXPIRED_EVENT, authenticatedFetch } from '../utils/auth';
 
 type PasswordGateProps = {
   children: React.ReactNode;
 };
 
+type AuthMode = 'sign-in' | 'sign-up';
+
 const PasswordGate = ({ children }: PasswordGateProps) => {
   const [email, setEmail] = useState('');
-  const [input, setInput] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [authToken, setAuthTokenState] = useState<string | null>(null);
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('sign-in');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: session, isPending, refetch } = authClient.useSession();
 
   const isGateEnabled = true;
+  const isAuthenticated = Boolean(session?.user);
 
   const handleLogout = useCallback(() => {
-    clearAuthToken();
-    setAuthTokenState(null);
     setEmail('');
-    setInput('');
+    setName('');
+    setPassword('');
     setError('');
     setInfo('');
-    setIsUnlocked(false);
+    void authClient.signOut();
   }, []);
 
   useEffect(() => {
     const onExpired = () => {
-      setError('Session expired. Please unlock again.');
+      setError('Session expired. Please sign in again.');
       handleLogout();
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, [handleLogout]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const validateExistingSession = async () => {
-      try {
-        const token = getAuthToken();
-        if (!token) {
-          if (!cancelled) setIsUnlocked(false);
-          return;
-        }
-
-        const response = await fetch('/api/auth', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          handleLogout();
-          return;
-        }
-
-        const data = (await response.json()) as { authenticated?: boolean };
-        if (data.authenticated) {
-          if (!cancelled) {
-            setAuthTokenState(token);
-            setIsUnlocked(true);
-          }
-        } else {
-          handleLogout();
-        }
-      } catch {
-        handleLogout();
-      } finally {
-        if (!cancelled) {
-          setIsCheckingAuth(false);
-        }
-      }
-    };
-
-    validateExistingSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [handleLogout]);
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setError('');
+    setInfo('');
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setInfo('');
+    setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password: input.trim() }),
-      });
+      const normalizedEmail = email.trim().toLowerCase();
+      const trimmedPassword = password.trim();
 
-      if (response.status === 401) {
-        setError('Incorrect password. Please try again.');
-        return;
-      }
+      if (mode === 'sign-up') {
+        const { error: signUpError } = await authClient.signUp.email({
+          email: normalizedEmail,
+          password: trimmedPassword,
+          name: name.trim() || normalizedEmail,
+        });
 
-      if (!response.ok) {
-        let message = 'Authentication failed. Please try again.';
-        try {
-          const data = (await response.json()) as { error?: string };
-          if (typeof data.error === 'string' && data.error.trim()) {
-            message = data.error;
-          }
-        } catch {
-          // Ignore parse errors and use generic fallback.
+        if (signUpError) {
+          setError(signUpError.message || 'Could not create an account for this email.');
+          return;
         }
-        setError(message);
-        return;
+
+        setInfo('Account created. You are signed in.');
+      } else {
+        const { error: signInError } = await authClient.signIn.email({
+          email: normalizedEmail,
+          password: trimmedPassword,
+        });
+
+        if (signInError) {
+          setError(signInError.message || 'Incorrect email or password.');
+          return;
+        }
       }
 
-      const data = (await response.json()) as { token?: string };
-      if (!data.token) {
-        setError('Authentication failed. Please try again.');
-        return;
-      }
-
-      setAuthToken(data.token);
-      setAuthTokenState(data.token);
-      setIsUnlocked(true);
+      await refetch();
       setEmail('');
-      setInput('');
+      setName('');
+      setPassword('');
     } catch {
       setError('Authentication request failed. Please check your connection.');
-    }
-  };
-
-  const handleRequestAccess = async () => {
-    setError('');
-    setInfo('');
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const password = input.trim();
-    if (!normalizedEmail || !password) {
-      setError('Enter your email and a password to request access.');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/access-request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: normalizedEmail, password }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(data.error || 'Failed to submit access request.');
-        return;
-      }
-
-      setInfo('Access request submitted. We will review and approve by email.');
-    } catch {
-      setError('Could not submit access request right now.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -176,8 +97,38 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     <div className="password-gate">
       <div className="password-gate-card">
         <h1>Helios Energy</h1>
-        <p>Sign in with approved email access, or request temporary access.</p>
+        <p>Sign in with an approved email to continue.</p>
+        <div className="password-gate-tabs" role="tablist" aria-label="Authentication mode">
+          <button
+            type="button"
+            className={mode === 'sign-in' ? 'active' : ''}
+            onClick={() => switchMode('sign-in')}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={mode === 'sign-up' ? 'active' : ''}
+            onClick={() => switchMode('sign-up')}
+          >
+            Create account
+          </button>
+        </div>
         <form onSubmit={handleSubmit}>
+          {mode === 'sign-up' && (
+            <>
+              <label htmlFor="app-name">Name</label>
+              <input
+                id="app-name"
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                autoComplete="name"
+                placeholder="Your name"
+                required
+              />
+            </>
+          )}
           <label htmlFor="app-email">Email</label>
           <input
             id="app-email"
@@ -192,36 +143,32 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
           <input
             id="app-password"
             type="password"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
             placeholder="Enter password"
             required
           />
           {error && <p className="password-gate-error">{error}</p>}
           {info && <p className="password-gate-info">{info}</p>}
-          <button type="submit">Unlock</button>
-          <button type="button" className="secondary-button" onClick={handleRequestAccess}>
-            Request Access
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Please wait...' : mode === 'sign-up' ? 'Create account' : 'Unlock'}
           </button>
         </form>
       </div>
     </div>
   );
 
-  const isAuthenticated = isUnlocked && !!authToken;
-
   return (
     <PasswordGateProvider
       value={{
         isGateEnabled,
         isAuthenticated,
-        authToken,
-        authenticatedFetch: authenticatedFetchWithToken,
+        authenticatedFetch,
         lockApp: handleLogout,
       }}
     >
-      {isCheckingAuth ? null : isGateEnabled && !isUnlocked ? overlay : children}
+      {isPending ? null : isGateEnabled && !isAuthenticated ? overlay : children}
     </PasswordGateProvider>
   );
 };

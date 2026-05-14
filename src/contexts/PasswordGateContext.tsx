@@ -3,7 +3,6 @@ import { createContext, useContext } from 'react';
 type PasswordGateContextValue = {
   isGateEnabled: boolean;
   isAuthenticated: boolean;
-  authToken: string | null;
   authenticatedFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   lockApp: () => void;
 };
@@ -14,7 +13,6 @@ const defaultFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(inp
 const PasswordGateContext = createContext<PasswordGateContextValue>({
   isGateEnabled: false,
   isAuthenticated: true,
-  authToken: null,
   authenticatedFetch: defaultFetch,
   lockApp: noop,
 });

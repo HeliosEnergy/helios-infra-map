@@ -79,7 +79,10 @@ describe('unifiedPowerPlantProcessor', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/power-plants',
         expect.objectContaining({
-          headers: expect.any(Headers),
+          credentials: 'same-origin',
+          headers: expect.objectContaining({
+            Accept: 'application/json',
+          }),
         })
       );
     });

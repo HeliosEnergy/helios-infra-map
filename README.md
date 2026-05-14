@@ -124,10 +124,15 @@ To get the project up and running locally:
     Create a `.env` file in the project root based on `.env.example` (if available) or the following:
     ```
     VITE_MAPBOX_TOKEN=YOUR_MAPBOX_ACCESS_TOKEN
+    DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
+    BETTER_AUTH_SECRET=generate-with-npx-auth-secret-or-openssl-rand-base64-32
+    BETTER_AUTH_URL=http://localhost:5173
+    ALLOWED_AUTH_EMAILS=person@example.com,teammate@example.com
     # Optional: FIBER_TILES_S3_URL=YOUR_S3_BUCKET_URL_FOR_FIBER_TILES
     # Optional: FIBER_TILE_SIZE=5 # or 2
+    # Optional: ALLOWED_ORIGINS=https://your-vercel-domain.vercel.app
     ```
-    You will need a Mapbox Access Token.
+    You will need a Mapbox Access Token. Better Auth requires the Postgres schema in `better-auth-schema.sql` and only allows users whose normalized email is listed in `ALLOWED_AUTH_EMAILS`.
 4.  **Run in development mode:**
     ```bash
     npm run dev

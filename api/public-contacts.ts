@@ -417,7 +417,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyRateLimit(req, res, RATE_LIMIT)) return;
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   const body = parseBody(req);
   const entriesRaw = (body.entries || []) as unknown;

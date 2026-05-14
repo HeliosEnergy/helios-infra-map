@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   try {
     const query = new URLSearchParams();
