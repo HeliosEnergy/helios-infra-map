@@ -874,6 +874,52 @@ body {
   font-weight: 600;
 }
 
+.plant-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-right: 28px;
+}
+
+.plant-panel-header h3 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.bookmark-button {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bookmark-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #f5b301;
+}
+
+.bookmark-button--active {
+  color: #f5b301;
+}
+
+.dark .bookmark-button {
+  color: #888;
+}
+
+.dark .bookmark-button:hover,
+.dark .bookmark-button--active {
+  color: #ffd54f;
+}
+
 .info-panel p {
   margin: 4px 0;
   font-size: 0.9rem;

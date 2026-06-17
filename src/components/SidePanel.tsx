@@ -7,6 +7,7 @@ import DataVisualizations from './DataVisualizations';
 import IcpTab from './IcpTab';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import type { PowerPlant } from '../models/PowerPlant';
+import type { BookmarkedPlantRef } from '../utils/bookmarkedPlants';
 import { getCableCacheStats, clearCableCache } from '../utils/wfsDataLoader';
 import './SidePanel.css';
 
@@ -117,6 +118,13 @@ interface SidePanelProps {
   onMarkPlantsDownloaded: (plantIds: string[]) => void;
   onClearDownloadedPlants: () => void;
 
+  // Saved plants
+  bookmarkedPlantIds: Set<string>;
+  bookmarkedPlants: BookmarkedPlantRef[];
+  onToggleBookmark: (plant: PowerPlant | BookmarkedPlantRef) => void;
+  onFlyToBookmark: (bookmark: BookmarkedPlantRef) => void;
+  onClearBookmarks: () => void;
+
   // Global filter reset
   onResetAllFilters: () => void;
   onResetLayersFiltersOnly: () => void;
@@ -223,6 +231,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
   downloadedPlantIds,
   onMarkPlantsDownloaded,
   onClearDownloadedPlants,
+  bookmarkedPlantIds,
+  bookmarkedPlants,
+  onToggleBookmark,
+  onFlyToBookmark,
+  onClearBookmarks,
 
   // Global filter reset
   onResetAllFilters,
@@ -354,6 +367,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
              onPlantSelect={onPlantSelect}
              onPlantDeselect={onPlantDeselect}
              onApplySelection={onApplySelection}
+             bookmarkedPlantIds={bookmarkedPlantIds}
+             bookmarkedPlants={bookmarkedPlants}
+             onToggleBookmark={onToggleBookmark}
+             onFlyToBookmark={onFlyToBookmark}
+             onClearBookmarks={onClearBookmarks}
              onResetLegendOnly={onResetLegendOnly}
              legendResetNonce={legendResetNonce}
            />

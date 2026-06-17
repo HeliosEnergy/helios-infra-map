@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './LegendTab.css';
 import type { PowerPlant } from '../models/PowerPlant';
+import type { BookmarkedPlantRef } from '../utils/bookmarkedPlants';
 import PlantSearch from './PlantSearch';
 
 interface LegendTabProps {
@@ -19,6 +20,11 @@ interface LegendTabProps {
   onPlantSelect: (plantId: string) => void;
   onPlantDeselect: (plantId: string) => void;
   onApplySelection: () => void;
+  bookmarkedPlantIds: Set<string>;
+  bookmarkedPlants: BookmarkedPlantRef[];
+  onToggleBookmark: (plant: PowerPlant | BookmarkedPlantRef) => void;
+  onFlyToBookmark: (bookmark: BookmarkedPlantRef) => void;
+  onClearBookmarks: () => void;
 
   onResetLegendOnly: () => void;
   legendResetNonce: number;
@@ -38,6 +44,11 @@ const LegendTab: React.FC<LegendTabProps> = ({
   onPlantSelect,
   onPlantDeselect,
   onApplySelection,
+  bookmarkedPlantIds,
+  bookmarkedPlants,
+  onToggleBookmark,
+  onFlyToBookmark,
+  onClearBookmarks,
   onResetLegendOnly,
   legendResetNonce,
 }) => {
@@ -169,7 +180,7 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
   return (
     <div className="legend-tab">
-      {/* Header with controls */}
+      {/* Header with controls — stays visible while scrolling */}
       <div className="legend-controls">
         <div className="control-row">
           <div className="search-container">
@@ -223,20 +234,8 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
         </div>
       </div>
 
-      {/* Plant Search Section with improved UI */}
-      <div className="plant-search-section">
-        <PlantSearch
-          powerPlants={powerPlants}
-          selectedPlantIds={selectedPlantIds}
-          onPlantSelect={onPlantSelect}
-          onPlantDeselect={onPlantDeselect}
-          onClearSelection={handleClearPlantSelection}
-        />
-      </div>
-
-      {/* Legend Content */}
+      {/* Energy type filters — primary content, shown first */}
       <div className="legend-content">
-        {/* Select All / Deselect All Buttons */}
         {(onSelectAllSources || onDeselectAllSources) && (
           <div className="legend-select-all-controls">
             {onSelectAllSources && (
@@ -303,7 +302,6 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
           </div>
         ))}
 
-        {/* Infrastructure Section */}
         <div className="legend-section">
           <h4 className="category-title">Infrastructure</h4>
           <div className="legend-grid">
@@ -329,8 +327,23 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
             </button>
           </div>
         </div>
+      </div>
 
-
+      {/* Saved plants & search — secondary, below legend filters */}
+      <div className="plant-search-section">
+        <h4 className="plant-search-section-title">Saved plants &amp; search</h4>
+        <PlantSearch
+          powerPlants={powerPlants}
+          selectedPlantIds={selectedPlantIds}
+          onPlantSelect={onPlantSelect}
+          onPlantDeselect={onPlantDeselect}
+          onClearSelection={handleClearPlantSelection}
+          bookmarkedPlantIds={bookmarkedPlantIds}
+          bookmarkedPlants={bookmarkedPlants}
+          onToggleBookmark={onToggleBookmark}
+          onFlyToBookmark={onFlyToBookmark}
+          onClearBookmarks={onClearBookmarks}
+        />
       </div>
     </div>
   );

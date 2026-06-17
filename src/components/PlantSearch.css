@@ -1,7 +1,7 @@
 .plant-search-container {
   position: relative;
   width: 100%;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .selected-plants-chips {
@@ -162,9 +162,204 @@
   padding: 10px 12px;
   cursor: pointer;
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plant-result-main {
+  display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
+
+.plant-result-star,
+.saved-plant-star {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.plant-result-star:hover,
+.saved-plant-star:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #f5b301;
+}
+
+.plant-result-star--active,
+.saved-plant-star--active {
+  color: #f5b301;
+}
+
+.dark .plant-result-star,
+.dark .saved-plant-star {
+  color: #888;
+}
+
+.dark .plant-result-star:hover,
+.dark .saved-plant-star:hover,
+.dark .plant-result-star--active,
+.dark .saved-plant-star--active {
+  color: #ffd54f;
+}
+
+.saved-plants-section {
+  margin-bottom: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dark .saved-plants-section {
+  border: none;
+  background: transparent;
+}
+
+.saved-plants-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 4px;
+}
+
+.saved-plants-toggle:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dark .saved-plants-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.saved-plants-chevron {
+  font-size: 11px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.saved-plants-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.saved-plants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.saved-plants-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.dark .saved-plants-title {
+  color: #ddd;
+}
+
+.saved-plants-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #777;
+}
+
+.dark .saved-plants-empty {
+  color: #aaa;
+}
+
+.saved-plants-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.saved-plant-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.saved-plant-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 123, 255, 0.08);
+  color: #333;
+  cursor: pointer;
+  text-align: left;
+}
+
+.saved-plant-name:hover {
+  background: rgba(0, 123, 255, 0.15);
+}
+
+.dark .saved-plant-name {
+  background: rgba(26, 115, 232, 0.15);
+  color: #ddd;
+}
+
+.saved-plant-name span:first-child {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.saved-plant-meta {
+  font-size: 11px;
+  color: #666;
+}
+
+.dark .saved-plant-meta {
+  color: #aaa;
+}
+
+.saved-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+
+.dark .saved-only-toggle {
+  color: #bbb;
+}
+
 
 .plant-result-item:hover,
 .plant-result-item.selected {

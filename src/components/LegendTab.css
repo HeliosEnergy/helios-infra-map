@@ -1,8 +1,7 @@
 .legend-tab {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  gap: 8px;
+  gap: 12px;
 }
 
 .legend-controls {
@@ -11,10 +10,19 @@
   gap: 6px;
   padding-bottom: 6px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  margin: -4px -4px 0;
+  padding: 4px 4px 8px;
 }
 
 .dark .legend-controls {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(30, 30, 30, 0.96);
 }
 
 .control-row {
@@ -149,11 +157,10 @@
 }
 
 .legend-content {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .legend-select-all-controls {
@@ -299,19 +306,35 @@
   color: #aaa;
 }
 
-/* Plant Search Section */
+/* Plant Search Section — below legend filters */
 .plant-search-section {
-  margin: 8px 0;
-  padding: 8px;
+  margin-top: 4px;
+  padding: 10px 8px 8px;
   background: rgba(0, 0, 0, 0.02);
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.plant-search-section-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dark .plant-search-section-title {
+  color: #aaa;
 }
 
 .dark .plant-search-section {
   background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Responsive Design */

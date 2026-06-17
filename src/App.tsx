@@ -18,7 +18,13 @@ import SidePanel from './components/SidePanel';
 import ProximityDialog from './components/ProximityDialog';
 import AddressSearch from './components/AddressSearch';
 import LocationStatsPanel from './components/LocationStatsPanel';
-import { Search, MapPin, X, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Search, MapPin, X, AlertTriangle, ExternalLink, Star } from 'lucide-react';
+import {
+  loadBookmarkedPlants,
+  saveBookmarkedPlants,
+  toBookmarkRef,
+  type BookmarkedPlantRef,
+} from './utils/bookmarkedPlants';
 import { useDebounce } from './hooks/useDebounce';
 import { usePowerPlantData } from './hooks/usePowerPlantData';
 import { useProximityAnalysis } from './hooks/useProximityAnalysis';
@@ -346,6 +352,13 @@ function App() {
       return new Set();
     }
   });
+  const [bookmarkedPlants, setBookmarkedPlants] = useState<globalThis.Map<string, BookmarkedPlantRef>>(
+    () => loadBookmarkedPlants()
+  );
+  const bookmarkedPlantIds = useMemo(
+    () => new Set(bookmarkedPlants.keys()),
+    [bookmarkedPlants]
+  );
 
   // ICP defaults: all states + 0 excess threshold
   // Convention: empty set means "all states" (no state filter applied).
@@ -570,6 +583,39 @@ function App() {
     setDownloadedPlantIds(new Set());
   }, []);
 
+  const handleToggleBookmark = useCallback((plant: PowerPlant | BookmarkedPlantRef) => {
+    setBookmarkedPlants((prev) => {
+      const next = new globalThis.Map(prev);
+      if (next.has(plant.id)) {
+        next.delete(plant.id);
+      } else {
+        next.set(plant.id, toBookmarkRef(plant as PowerPlant));
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearBookmarks = useCallback(() => {
+    setBookmarkedPlants(new globalThis.Map());
+  }, []);
+
+  const handleFlyToBookmark = useCallback((bookmark: BookmarkedPlantRef) => {
+    setViewState({
+      longitude: bookmark.coordinates[0],
+      latitude: bookmark.coordinates[1],
+      zoom: 10,
+      pitch: 0,
+      bearing: 0,
+    });
+
+    const fullPlant = powerPlants.find((plant) => plant.id === bookmark.id);
+    if (fullPlant) {
+      setPersistentPlant(fullPlant);
+      setIsTooltipPersistent(true);
+      setHoverInfo(null);
+    }
+  }, [powerPlants]);
+
   const handleResetAllFilters = useCallback(() => {
     // Clear selection so all plants show again.
     setSelectedPlantIds(new Set());
@@ -665,6 +711,29 @@ function App() {
       // ignore storage errors (private mode, quota, etc)
     }
   }, [downloadedPlantIds]);
+
+  useEffect(() => {
+    try {
+      saveBookmarkedPlants(bookmarkedPlants);
+    } catch {
+      // Ignore localStorage write failures.
+    }
+  }, [bookmarkedPlants]);
+
+  const renderBookmarkButton = (plant: PowerPlant) => {
+    const isBookmarked = bookmarkedPlantIds.has(plant.id);
+    return (
+      <button
+        type="button"
+        className={`bookmark-button${isBookmarked ? ' bookmark-button--active' : ''}`}
+        onClick={() => handleToggleBookmark(plant)}
+        aria-label={isBookmarked ? `Remove ${plant.name} from saved plants` : `Save ${plant.name}`}
+        title={isBookmarked ? 'Remove bookmark' : 'Save plant'}
+      >
+        <Star size={16} fill={isBookmarked ? 'currentColor' : 'none'} />
+      </button>
+    );
+  };
 
   const handleGoogleSearch = (plantName: string, source?: string, owner?: string) => {
     const searchTerms = [plantName];
@@ -1078,6 +1147,11 @@ function App() {
         downloadedPlantIds={downloadedPlantIds}
         onMarkPlantsDownloaded={handleMarkPlantsDownloaded}
         onClearDownloadedPlants={handleClearDownloadedPlants}
+        bookmarkedPlantIds={bookmarkedPlantIds}
+        bookmarkedPlants={Array.from(bookmarkedPlants.values())}
+        onToggleBookmark={handleToggleBookmark}
+        onFlyToBookmark={handleFlyToBookmark}
+        onClearBookmarks={handleClearBookmarks}
         onResetAllFilters={handleResetAllFilters}
         onResetLayersFiltersOnly={handleResetLayersFiltersOnly}
         layersFiltersResetNonce={layersFiltersResetNonce}
@@ -1139,7 +1213,10 @@ function App() {
                  
                  return (
                    <>
-                     <h3>{plant.name}</h3>
+                     <div className="plant-panel-header">
+                       <h3>{plant.name}</h3>
+                       {renderBookmarkButton(plant)}
+                     </div>
                      <p>Available Capacity: {availableCapacity.toFixed(1)} MW</p>
                      <p>Source: {plant.source}</p>
                      <p>Used Capacity: {usedCapacity.toFixed(1)} MW</p>
@@ -1296,7 +1373,10 @@ function App() {
                // For other countries, show the original format
                return (
                  <>
-                   <h3>{plant.name}</h3>
+                   <div className="plant-panel-header">
+                     <h3>{plant.name}</h3>
+                     {renderBookmarkButton(plant)}
+                   </div>
                    <p>Output: {plant.outputDisplay}</p>
                    <p>Source: {plant.source}</p>
                    {/* Show used capacity for global database plants (India, Kazakhstan, Kyrgyzstan, UAE) */}
