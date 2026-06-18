@@ -20,7 +20,10 @@ import AddressSearch from './components/AddressSearch';
 import LocationStatsPanel from './components/LocationStatsPanel';
 import { Search, MapPin, X, AlertTriangle, ExternalLink, Star } from 'lucide-react';
 import {
-  loadBookmarkedPlants,
+  clearBookmarkedPlants,
+  deleteBookmarkedPlant,
+  fetchBookmarkedPlants,
+  saveBookmarkedPlant,
   saveBookmarkedPlants,
   toBookmarkRef,
   type BookmarkedPlantRef,
@@ -353,7 +356,7 @@ function App() {
     }
   });
   const [bookmarkedPlants, setBookmarkedPlants] = useState<globalThis.Map<string, BookmarkedPlantRef>>(
-    () => loadBookmarkedPlants()
+    () => new globalThis.Map()
   );
   const bookmarkedPlantIds = useMemo(
     () => new Set(bookmarkedPlants.keys()),
@@ -584,20 +587,51 @@ function App() {
   }, []);
 
   const handleToggleBookmark = useCallback((plant: PowerPlant | BookmarkedPlantRef) => {
-    setBookmarkedPlants((prev) => {
-      const next = new globalThis.Map(prev);
-      if (next.has(plant.id)) {
-        next.delete(plant.id);
-      } else {
-        next.set(plant.id, toBookmarkRef(plant as PowerPlant));
+    const bookmark = toBookmarkRef(plant);
+    const previous = bookmarkedPlants;
+    const next = new globalThis.Map(previous);
+    const shouldRemove = next.has(bookmark.id);
+
+    if (shouldRemove) {
+      next.delete(bookmark.id);
+    } else {
+      next.set(bookmark.id, bookmark);
+    }
+
+    setBookmarkedPlants(next);
+
+    void (async () => {
+      try {
+        if (shouldRemove) {
+          await deleteBookmarkedPlant(bookmark.id);
+        } else {
+          const saved = await saveBookmarkedPlant(bookmark);
+          setBookmarkedPlants((current) => {
+            const updated = new globalThis.Map(current);
+            updated.set(saved.id, saved);
+            return updated;
+          });
+        }
+      } catch (error) {
+        console.error('Failed to sync saved power plant:', error);
+        setBookmarkedPlants(previous);
       }
-      return next;
-    });
-  }, []);
+    })();
+  }, [bookmarkedPlants]);
 
   const handleClearBookmarks = useCallback(() => {
+    const previous = bookmarkedPlants;
     setBookmarkedPlants(new globalThis.Map());
-  }, []);
+
+    void (async () => {
+      try {
+        await clearBookmarkedPlants();
+      } catch (error) {
+        console.error('Failed to clear saved power plants:', error);
+        setBookmarkedPlants(previous);
+      }
+    })();
+  }, [bookmarkedPlants]);
 
   const handleFlyToBookmark = useCallback((bookmark: BookmarkedPlantRef) => {
     setViewState({
@@ -713,10 +747,33 @@ function App() {
   }, [downloadedPlantIds]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadAccountBookmarks = async () => {
+      try {
+        const remoteBookmarks = await fetchBookmarkedPlants();
+        if (!cancelled) {
+          setBookmarkedPlants(remoteBookmarks);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load saved power plants:', error);
+        }
+      }
+    };
+
+    loadAccountBookmarks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       saveBookmarkedPlants(bookmarkedPlants);
     } catch {
-      // Ignore localStorage write failures.
+      // Mirror server-backed bookmarks locally as a best-effort cache.
     }
   }, [bookmarkedPlants]);
 

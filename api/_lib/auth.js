@@ -49,15 +49,16 @@ export const isPasswordValid = (candidate) => {
   return passwords.some((password) => timingSafeEqual(password, candidate));
 };
 
-export const issueAuthToken = (ttlSeconds = DEFAULT_TOKEN_TTL_SECONDS) => {
+export const issueAuthToken = (ttlSeconds = DEFAULT_TOKEN_TTL_SECONDS, subject = 'helios-user') => {
   const secret = getJwtSecret();
   if (!secret) {
     throw new Error('AUTH_JWT_SECRET (or APP_PASSWORD) is required to issue tokens.');
   }
 
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const normalizedSubject = String(subject || 'helios-user').trim().toLowerCase();
   const payload = {
-    sub: 'helios-user',
+    sub: normalizedSubject || 'helios-user',
     iat: nowSeconds,
     exp: nowSeconds + ttlSeconds,
   };
@@ -94,7 +95,7 @@ export const verifyAuthToken = (token) => {
     const header = JSON.parse(base64UrlDecode(encodedHeader));
     const payload = JSON.parse(base64UrlDecode(encodedPayload));
     if (header.alg !== 'HS256' || header.typ !== 'JWT') return null;
-    if (payload.sub !== 'helios-user') return null;
+    if (typeof payload.sub !== 'string' || !payload.sub.trim()) return null;
     if (typeof payload.exp !== 'number' || typeof payload.iat !== 'number') return null;
     if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
     return payload;

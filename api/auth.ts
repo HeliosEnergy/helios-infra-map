@@ -68,6 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = parseBody(req);
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  let tokenSubject = 'helios-user';
 
   if (!password) {
     return res.status(400).json({ error: 'Password is required.' });
@@ -91,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         return res.status(401).json({ error: 'Invalid email or password.' });
       }
+      tokenSubject = email;
     } catch (error) {
       console.error('Email auth failed:', error);
       return res.status(500).json({ error: 'Unable to validate access right now.' });
@@ -106,9 +108,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { token, expiresAt } = issueAuthToken();
+  const { token, expiresAt } = issueAuthToken(undefined, tokenSubject);
   return res.status(200).json({
     token,
     expiresAt,
+    email: tokenSubject !== 'helios-user' ? tokenSubject : undefined,
   });
 }

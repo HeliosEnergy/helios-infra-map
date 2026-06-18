@@ -14,7 +14,7 @@ const assertSupabaseConfigured = () => {
 
 const buildSupabaseUrl = (path, query = '') => `${getSupabaseUrl()}/rest/v1/${path}${query ? `?${query}` : ''}`;
 
-const supabaseFetch = async (path, { method = 'GET', query = '', body } = {}) => {
+export const supabaseFetch = async (path, { method = 'GET', query = '', body } = {}) => {
   assertSupabaseConfigured();
   const response = await fetch(buildSupabaseUrl(path, query), {
     method,
@@ -50,7 +50,7 @@ const addHoursIso = (hours) => {
   return d.toISOString();
 };
 
-const normalizeEmail = (email) => email.trim().toLowerCase();
+export const normalizeEmail = (email) => email.trim().toLowerCase();
 
 export const hashPassword = (password) => {
   const salt = crypto.randomBytes(16).toString('hex');
