@@ -26,6 +26,12 @@ const parsePasswordList = (raw) => {
 const getConfiguredPasswords = () =>
   parsePasswordList(process.env.APP_PASSWORDS || process.env.APP_PASSWORD || process.env.VITE_APP_PASSWORD);
 
+const getHeliosEmailPasswords = () =>
+  parsePasswordList(process.env.HELIOS_EMAIL_PASSWORDS || process.env.HELIOS_EMAIL_PASSWORD);
+
+const getHeliosEmailDomains = () =>
+  parsePasswordList(process.env.HELIOS_EMAIL_DOMAINS || 'helios.co').map((domain) => domain.toLowerCase());
+
 const getJwtSecret = () =>
   process.env.AUTH_JWT_SECRET || process.env.APP_PASSWORD || process.env.VITE_APP_PASSWORD || '';
 
@@ -41,12 +47,23 @@ const timingSafeEqual = (a, b) => {
 
 export const isAuthConfigured = () =>
   getJwtSecret().length > 0 &&
-  (getConfiguredPasswords().length > 0 || isEmailAccessConfigured());
+  (getConfiguredPasswords().length > 0 || getHeliosEmailPasswords().length > 0 || isEmailAccessConfigured());
 
 export const isPasswordValid = (candidate) => {
   const passwords = getConfiguredPasswords();
   if (passwords.length === 0) return false;
   return passwords.some((password) => timingSafeEqual(password, candidate));
+};
+
+export const isHeliosEmailLoginValid = (email, candidatePassword) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const passwords = getHeliosEmailPasswords();
+  if (!normalizedEmail || passwords.length === 0) return false;
+
+  const domainAllowed = getHeliosEmailDomains().some((domain) => normalizedEmail.endsWith(`@${domain}`));
+  if (!domainAllowed) return false;
+
+  return passwords.some((password) => timingSafeEqual(password, candidatePassword));
 };
 
 export const issueAuthToken = (ttlSeconds = DEFAULT_TOKEN_TTL_SECONDS, subject = 'helios-user') => {

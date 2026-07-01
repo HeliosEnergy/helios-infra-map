@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
   getBearerToken,
+  isHeliosEmailLoginValid,
   isAuthConfigured,
   isPasswordValid,
   issueAuthToken,
@@ -75,27 +76,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (email) {
-    try {
-      const loginResult = await validateApprovedUserLogin({
-        email,
-        password: password.trim(),
-      });
-      if (!loginResult.ok) {
-        if (loginResult.reason === 'pending') {
-          return res.status(403).json({ error: 'Access request is pending approval.' });
-        }
-        if (loginResult.reason === 'rejected') {
-          return res.status(403).json({ error: 'Your access request was rejected.' });
-        }
-        if (loginResult.reason === 'access_expired') {
-          return res.status(403).json({ error: 'Access expired. Please request access again.' });
-        }
-        return res.status(401).json({ error: 'Invalid email or password.' });
-      }
+    if (isHeliosEmailLoginValid(email, password.trim())) {
       tokenSubject = email;
-    } catch (error) {
-      console.error('Email auth failed:', error);
-      return res.status(500).json({ error: 'Unable to validate access right now.' });
+    } else {
+      try {
+        const loginResult = await validateApprovedUserLogin({
+          email,
+          password: password.trim(),
+        });
+        if (!loginResult.ok) {
+          if (loginResult.reason === 'pending') {
+            return res.status(403).json({ error: 'Access request is pending approval.' });
+          }
+          if (loginResult.reason === 'rejected') {
+            return res.status(403).json({ error: 'Your access request was rejected.' });
+          }
+          if (loginResult.reason === 'access_expired') {
+            return res.status(403).json({ error: 'Access expired. Please request access again.' });
+          }
+          return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+        tokenSubject = email;
+      } catch (error) {
+        console.error('Email auth failed:', error);
+        return res.status(500).json({ error: 'Unable to validate access right now.' });
+      }
     }
   } else {
     if (!isAuthConfigured()) {
