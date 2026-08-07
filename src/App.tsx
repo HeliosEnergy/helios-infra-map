@@ -863,8 +863,9 @@ function App() {
     return icpMapFilteredPowerPlants.length;
   }, [icpMapFilteredPowerPlants.length, showOnlyNearbyPlants]);
 
-  // Feed the ICP tab the same filtered list used by the map, so counts stay consistent.
-  const icpPowerPlants = useMemo(() => icpMapFilteredPowerPlants, [icpMapFilteredPowerPlants]);
+  // Feed the ICP tab the base filtered list so state options do not disappear
+  // after selecting a single state; the tab applies ICP-specific filters itself.
+  const icpPowerPlants = useMemo(() => filteredPowerPlants, [filteredPowerPlants]);
 
   const { fiberLayer, hifldLayer } = useVectorTileLayers({
     showFiberCables,
