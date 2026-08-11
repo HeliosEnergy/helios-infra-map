@@ -83,6 +83,21 @@ const LegendTab: React.FC<LegendTabProps> = ({
 
 const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
 
+const AI_DATA_CENTER_STATUS_COLORS: Array<{ label: string; color: [number, number, number]; description: string }> = [
+  { label: 'Operational', color: [34, 197, 94], description: 'Currently operating' },
+  { label: 'Under construction', color: [249, 115, 22], description: 'Being built' },
+  { label: 'Planned', color: [59, 130, 246], description: 'Planned or landbanked' },
+  { label: 'Proposed', color: [168, 85, 247], description: 'Proposed project' },
+  { label: 'Cancelled', color: [107, 114, 128], description: 'Cancelled or decommissioned' },
+  { label: 'Unknown', color: [148, 163, 184], description: 'Status unavailable' },
+];
+
+const AI_DATA_CENTER_SIZE_EXAMPLES = [
+  { label: 'Default / unknown MW', size: 7 },
+  { label: 'About 100 MW', size: 14 },
+  { label: 'Large / capped size', size: 26 },
+];
+
   // Filter and sort sources based on search and sort options
   const processedSources = useMemo(() => {
     let sources = [...allSourcesInData]; // Include 'other' now
@@ -325,6 +340,53 @@ const CABLE_COLOR: [number, number, number] = [255, 165, 0]; // Orange
                       )}
                     </span>
             </button>
+          </div>
+        </div>
+
+        <div className="legend-section ai-data-center-legend">
+          <div className="ai-legend-header">
+            <h4 className="category-title">AI Data Centers</h4>
+            <span className="ai-legend-subtitle">Color = status, size = power capacity</span>
+          </div>
+
+          <div className="ai-legend-card">
+            <div className="ai-legend-group">
+              <div className="ai-legend-group-title">Status colors</div>
+              <div className="ai-status-grid">
+                {AI_DATA_CENTER_STATUS_COLORS.map((item) => (
+                  <div key={item.label} className="ai-status-item">
+                    <span
+                      className="ai-status-swatch"
+                      style={{ backgroundColor: `rgb(${item.color.join(',')})` }}
+                      aria-hidden="true"
+                    />
+                    <span className="ai-status-copy">
+                      <span className="ai-status-label">{item.label}</span>
+                      <span className="ai-status-description">{item.description}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ai-legend-group">
+              <div className="ai-legend-group-title">Bubble size</div>
+              <div className="ai-size-row">
+                {AI_DATA_CENTER_SIZE_EXAMPLES.map((item) => (
+                  <div key={item.label} className="ai-size-item">
+                    <span
+                      className="ai-size-bubble"
+                      style={{ width: item.size, height: item.size }}
+                      aria-hidden="true"
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="ai-size-note">
+                Facilities without power capacity use the smallest default marker. Larger power capacity increases marker size up to a capped maximum.
+              </p>
+            </div>
           </div>
         </div>
       </div>
