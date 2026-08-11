@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { IconLayer, PathLayer, PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 import type { PowerPlant } from '../models/PowerPlant';
+import type { AIDataCenter } from '../models/AIDataCenter';
 import type { Cable } from '../models/Cable';
 import { LOCATION_PIN_ICON } from '../utils/locationPinIcon';
 import type { PowerRange } from '../utils/powerRangeCalculator';
@@ -20,6 +21,8 @@ type UseMapLayersParams = {
   showRadiusCircle: boolean;
   showPowerPlants: boolean;
   filteredPowerPlants: PowerPlant[];
+  showAIDataCenters: boolean;
+  aiDataCenters: AIDataCenter[];
   sizeByOption: SizeByOption;
   sizeMultiplier: number;
   capacityWeight: number;
@@ -31,6 +34,7 @@ type UseMapLayersParams = {
   isMeasuringDistance: boolean;
   distancePoints: [number, number][];
   setHoverInfo: (plant: PowerPlant | null) => void;
+  setAIDataCenterHoverInfo: (dataCenter: AIDataCenter | null) => void;
   setLocationPinHoverInfo: (info: LocationHoverInfo) => void;
 };
 
@@ -54,12 +58,29 @@ const POWER_PLANT_COLORS: Record<string, [number, number, number]> = {
 
 const CABLE_COLOR: [number, number, number] = [255, 165, 0];
 
+const AI_DATA_CENTER_STATUS_COLORS: Record<string, [number, number, number]> = {
+  Operational: [34, 197, 94],
+  'Under construction': [249, 115, 22],
+  Planned: [59, 130, 246],
+  Proposed: [168, 85, 247],
+  Cancelled: [107, 114, 128],
+  Unknown: [148, 163, 184],
+};
+
+const getAIDataCenterRadius = (dataCenter: AIDataCenter) => {
+  const powerMw = dataCenter.powerMw;
+  if (!powerMw || powerMw <= 0) return 5;
+  return Math.min(24, Math.max(5, Math.sqrt(powerMw) * 1.4));
+};
+
 export function useMapLayers({
   selectedLocation,
   locationCircle,
   showRadiusCircle,
   showPowerPlants,
   filteredPowerPlants,
+  showAIDataCenters,
+  aiDataCenters,
   sizeByOption,
   sizeMultiplier,
   capacityWeight,
@@ -71,6 +92,7 @@ export function useMapLayers({
   isMeasuringDistance,
   distancePoints,
   setHoverInfo,
+  setAIDataCenterHoverInfo,
   setLocationPinHoverInfo,
 }: UseMapLayersParams) {
   return useMemo(() => {
@@ -174,6 +196,25 @@ export function useMapLayers({
           getFillColor: (d: PowerPlant) => POWER_PLANT_COLORS[d.source] || POWER_PLANT_COLORS.other,
           onHover: (info: { object?: PowerPlant }) => setHoverInfo(info.object || null),
         }),
+      showAIDataCenters &&
+        new ScatterplotLayer({
+          id: 'ai-data-centers',
+          data: aiDataCenters,
+          pickable: true,
+          cursor: 'pointer',
+          opacity: 0.85,
+          filled: true,
+          stroked: true,
+          lineWidthMinPixels: 1,
+          radiusUnits: 'pixels',
+          radiusMinPixels: 4,
+          radiusMaxPixels: 28,
+          getPosition: (d: AIDataCenter) => d.coordinates,
+          getRadius: getAIDataCenterRadius,
+          getFillColor: (d: AIDataCenter) => AI_DATA_CENTER_STATUS_COLORS[d.status] || AI_DATA_CENTER_STATUS_COLORS.Unknown,
+          getLineColor: [15, 23, 42, 220],
+          onHover: (info: { object?: AIDataCenter }) => setAIDataCenterHoverInfo(info.object || null),
+        }),
       showWfsCables &&
         new PathLayer({
           id: 'wfs-cables',
@@ -222,6 +263,8 @@ export function useMapLayers({
     showRadiusCircle,
     showPowerPlants,
     filteredPowerPlants,
+    showAIDataCenters,
+    aiDataCenters,
     sizeByOption,
     sizeMultiplier,
     capacityWeight,
@@ -233,6 +276,7 @@ export function useMapLayers({
     isMeasuringDistance,
     distancePoints,
     setHoverInfo,
+    setAIDataCenterHoverInfo,
     setLocationPinHoverInfo,
   ]);
 }

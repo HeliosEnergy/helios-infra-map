@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import Map, { NavigationControl } from 'react-map-gl';
 import DeckGL from '@deck.gl/react';
 import './App.css';
 import type { PowerPlant } from './models/PowerPlant';
+import type { AIDataCenter } from './models/AIDataCenter';
 import type { Cable } from './models/Cable';
 import type { FiberCable } from './models/FiberCable';
 import { loadWfsCableData } from './utils/wfsDataLoader';
@@ -30,6 +31,7 @@ import {
 } from './utils/bookmarkedPlants';
 import { useDebounce } from './hooks/useDebounce';
 import { usePowerPlantData } from './hooks/usePowerPlantData';
+import { useAIDataCenters } from './hooks/useAIDataCenters';
 import { useProximityAnalysis } from './hooks/useProximityAnalysis';
 import { useVectorTileLayers } from './hooks/useVectorTileLayers';
 import { useNearbyFiber } from './hooks/useNearbyFiber';
@@ -238,6 +240,20 @@ const classifyUsSector = (
   return 'other';
 };
 
+const formatNumber = (value: number | undefined, suffix = ''): string | null => {
+  if (value === undefined || !Number.isFinite(value)) return null;
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${suffix}`;
+};
+
+const renderAIDataCenterField = (label: string, value: ReactNode) => {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <p>
+      <strong>{label}:</strong> {value}
+    </p>
+  );
+};
+
 // Mapbox token from environment variables
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HERE';
 
@@ -263,12 +279,14 @@ function App() {
   const { theme } = useTheme();
   const [wfsCables, setWfsCables] = useState<Cable[]>([]);
   const [showPowerPlants, setShowPowerPlants] = useState<boolean>(true);
+  const [showAIDataCenters, setShowAIDataCenters] = useState<boolean>(false);
   const [showWfsCables, setShowWfsCables] = useState<boolean>(false);
   const [showHifldLines, setShowHifldLines] = useState<boolean>(false);
   const [showFiberCables, setShowFiberCables] = useState<boolean>(true);
   const [showFiberOverview, setShowFiberOverview] = useState<boolean>(true);
 
   const [hoverInfo, setHoverInfo] = useState<PowerPlant | null>(null);
+  const [aiDataCenterHoverInfo, setAIDataCenterHoverInfo] = useState<AIDataCenter | null>(null);
   const [hoveredLine, setHoveredLine] = useState<HoveredHifldLine | null>(null);
   const [locationPinHoverInfo, setLocationPinHoverInfo] = useState<{ x: number; y: number; address: string } | null>(null);
   const [isLineTooltipPersistent, setIsLineTooltipPersistent] = useState<boolean>(false);
@@ -333,6 +351,8 @@ function App() {
   const [sizeByOption, setSizeByOption] = useState<SizeByOption>('nameplate_capacity');
   const [isTooltipPersistent, setIsTooltipPersistent] = useState<boolean>(false);
   const [persistentPlant, setPersistentPlant] = useState<PowerPlant | null>(null);
+  const [isAIDataCenterTooltipPersistent, setIsAIDataCenterTooltipPersistent] = useState<boolean>(false);
+  const [persistentAIDataCenter, setPersistentAIDataCenter] = useState<AIDataCenter | null>(null);
   const [isProximityDialogOpen, setIsProximityDialogOpen] = useState<boolean>(false);
   const [allStatuses, setAllStatuses] = useState<string[]>([]);
   const [filteredStatuses, setFilteredStatuses] = useState<Set<string>>(new Set());
@@ -411,6 +431,13 @@ function App() {
     proximityDistance: debouncedDistance,
     isFilterStateReady,
   });
+
+  const {
+    dataCenters: aiDataCenters,
+    loading: loadingAIDataCenters,
+    error: aiDataCentersError,
+    visibleCount: aiDataCenterCount,
+  } = useAIDataCenters({ enabled: showAIDataCenters });
 
   useEffect(() => {
     let cancelled = false;
@@ -965,6 +992,8 @@ function App() {
     showRadiusCircle,
     showPowerPlants,
     filteredPowerPlants: icpMapFilteredPowerPlants,
+    showAIDataCenters,
+    aiDataCenters,
     sizeByOption,
     sizeMultiplier,
     capacityWeight,
@@ -976,6 +1005,7 @@ function App() {
     isMeasuringDistance,
     distancePoints,
     setHoverInfo,
+    setAIDataCenterHoverInfo,
     setLocationPinHoverInfo,
   });
   return (
@@ -984,6 +1014,23 @@ function App() {
       {loading && (
         <div className="loading-indicator">
           Loading data...
+        </div>
+      )}
+      {showAIDataCenters && loadingAIDataCenters && (
+        <div className="loading-indicator">
+          Loading AI data centers...
+        </div>
+      )}
+      {showAIDataCenters && !loadingAIDataCenters && aiDataCentersError && (
+        <div className="data-warning">
+          <AlertTriangle size={20} />
+          <span>{aiDataCentersError}</span>
+        </div>
+      )}
+      {showAIDataCenters && !loadingAIDataCenters && !aiDataCentersError && aiDataCenterCount === 0 && (
+        <div className="data-warning">
+          <AlertTriangle size={20} />
+          <span>No AI data centers are available for this layer.</span>
         </div>
       )}
       
@@ -1073,6 +1120,19 @@ function App() {
               setHoverInfo(info.object);
               setIsTooltipPersistent(true);
               setPersistentPlant(info.object);
+              setAIDataCenterHoverInfo(null);
+              setIsAIDataCenterTooltipPersistent(false);
+              setPersistentAIDataCenter(null);
+              return true;
+            }
+            if (info.object && info.layer?.id === 'ai-data-centers') {
+              event.stopPropagation();
+              setAIDataCenterHoverInfo(info.object);
+              setIsAIDataCenterTooltipPersistent(true);
+              setPersistentAIDataCenter(info.object);
+              setHoverInfo(null);
+              setIsTooltipPersistent(false);
+              setPersistentPlant(null);
               return true;
             }
             if (info.object && info.layer?.id === 'hifld-lines') {
@@ -1096,6 +1156,7 @@ function App() {
             // Click on empty space - clear hover but keep persistent
             if (!info.object) {
               setHoverInfo(null);
+              setAIDataCenterHoverInfo(null);
               setHoveredLine(null);
               // Only clear fiber hover if not persistent (persistent stays visible)
               if (!isFiberTooltipPersistent) {
@@ -1136,11 +1197,13 @@ function App() {
       {/* Unified Side Panel */}
       <SidePanel
         showPowerPlants={showPowerPlants}
+        showAIDataCenters={showAIDataCenters}
         showWfsCables={showWfsCables}
         showHifldLines={showHifldLines}
         showFiberCables={showFiberCables}
         showFiberOverview={showFiberOverview}
         onTogglePowerPlants={() => setShowPowerPlants(!showPowerPlants)}
+        onToggleAIDataCenters={() => setShowAIDataCenters(!showAIDataCenters)}
         onToggleWfsCables={() => setShowWfsCables(!showWfsCables)}
         onToggleHifldLines={() => setShowHifldLines(!showHifldLines)}
         onToggleFiberCables={() => setShowFiberCables(!showFiberCables)}
@@ -1239,6 +1302,115 @@ function App() {
 
         {/* Info Panels Container - Stacked Vertically */}
         <div className="info-panel-container">
+          {/* Unified Info Panel - AI Data Center */}
+          {(aiDataCenterHoverInfo || (isAIDataCenterTooltipPersistent && persistentAIDataCenter)) && (
+            <div className="info-panel plant-panel">
+              {isAIDataCenterTooltipPersistent && (
+                <button
+                  className="close-button"
+                  onClick={() => {
+                    setIsAIDataCenterTooltipPersistent(false);
+                    setAIDataCenterHoverInfo(null);
+                    setPersistentAIDataCenter(null);
+                  }}
+                  aria-label="Close AI data center details"
+                >
+                  <X size={16} />
+                </button>
+              )}
+
+              {(() => {
+                const dataCenter = aiDataCenterHoverInfo || persistentAIDataCenter;
+                if (!dataCenter) return null;
+                const sources = (dataCenter.sources || []).filter((source) => {
+                  try {
+                    const parsed = new URL(source.url);
+                    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+                  } catch {
+                    return false;
+                  }
+                });
+
+                return (
+                  <>
+                    <div className="plant-panel-header">
+                      <h3>{dataCenter.name}</h3>
+                      <span className="status-badge">{dataCenter.status}</span>
+                    </div>
+
+                    <h4>Overview</h4>
+                    {renderAIDataCenterField('Developer', dataCenter.developer)}
+                    {renderAIDataCenterField('Operator', dataCenter.operator)}
+                    {renderAIDataCenterField('Type', dataCenter.dataCenterType)}
+                    {renderAIDataCenterField('Address', dataCenter.address)}
+                    {renderAIDataCenterField('City', dataCenter.city)}
+                    {renderAIDataCenterField('County', dataCenter.county)}
+                    {renderAIDataCenterField('State', dataCenter.state)}
+                    {renderAIDataCenterField('Country', dataCenter.country)}
+                    {renderAIDataCenterField('Operating date', dataCenter.operatingDate)}
+                    {renderAIDataCenterField('Operating year', dataCenter.operatingYear)}
+                    <p>
+                      <strong>Coordinates:</strong> {dataCenter.coordinates[1].toFixed(4)}, {dataCenter.coordinates[0].toFixed(4)}
+                    </p>
+
+                    <h4>Capacity and site</h4>
+                    {renderAIDataCenterField('Power capacity', formatNumber(dataCenter.powerMw, ' MW'))}
+                    {renderAIDataCenterField('Site square footage', formatNumber(dataCenter.squareFeet, ' sq ft'))}
+                    {renderAIDataCenterField('Acreage', formatNumber(dataCenter.acreage, ' acres'))}
+                    {renderAIDataCenterField(
+                      'Capital expenditure',
+                      dataCenter.capitalExpenditure
+                        ? `$${dataCenter.capitalExpenditure.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : dataCenter.capitalExpenditureRaw
+                    )}
+
+                    <h4>Estimated impact</h4>
+                    {renderAIDataCenterField(
+                      'Estimated daily electricity use',
+                      formatNumber(dataCenter.estimatedDailyElectricityUse, ' kWh/day')
+                    )}
+                    {renderAIDataCenterField(
+                      'Estimated daily water use',
+                      formatNumber(dataCenter.estimatedDailyWaterUse, ' gal/day')
+                    )}
+                    {renderAIDataCenterField(
+                      'Estimated homes-equivalent demand',
+                      formatNumber(dataCenter.estimatedHomesEquivalent)
+                    )}
+
+                    {sources.length > 0 && (
+                      <>
+                        <h4>Sources ({dataCenter.citationCount || sources.length})</h4>
+                        <div className="cta-buttons">
+                          {sources.slice(0, 4).map((source, index) => (
+                            <button
+                              key={`${source.url}-${index}`}
+                              onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
+                              aria-label={`Open source ${index + 1} for ${dataCenter.name}`}
+                            >
+                              <ExternalLink size={16} />
+                              {source.label || `Source ${index + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    <div className="cta-buttons">
+                      <button
+                        onClick={() => handleGoogleMaps(dataCenter.coordinates)}
+                        aria-label={`View ${dataCenter.name} location on Google Maps`}
+                      >
+                        <MapPin size={16} />
+                        View on Google Maps
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Unified Info Panel - Power Plant */}
           {(hoverInfo || (isTooltipPersistent && persistentPlant)) && (
             <div className="info-panel plant-panel">

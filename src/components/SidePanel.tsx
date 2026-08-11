@@ -14,11 +14,13 @@ import './SidePanel.css';
 interface SidePanelProps {
   // Layer visibility
   showPowerPlants: boolean;
+  showAIDataCenters: boolean;
   showWfsCables: boolean;
   showHifldLines: boolean;
   showFiberCables: boolean;
   showFiberOverview: boolean;
   onTogglePowerPlants: () => void;
+  onToggleAIDataCenters: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
   onToggleFiberCables: () => void;
@@ -148,11 +150,13 @@ interface SidePanelProps {
 const SidePanel: React.FC<SidePanelProps> = ({
   // Layer visibility
   showPowerPlants,
+  showAIDataCenters,
   showWfsCables,
   showHifldLines,
   showFiberCables,
   showFiberOverview,
   onTogglePowerPlants,
+  onToggleAIDataCenters,
   onToggleWfsCables,
   onToggleHifldLines,
   onToggleFiberCables,
@@ -297,11 +301,13 @@ const SidePanel: React.FC<SidePanelProps> = ({
         return (
               <LayersFiltersTab
                 showPowerPlants={showPowerPlants}
+                showAIDataCenters={showAIDataCenters}
                 showWfsCables={showWfsCables}
                 showHifldLines={showHifldLines}
                 showFiberCables={showFiberCables}
                 showFiberOverview={showFiberOverview}
                 onTogglePowerPlants={onTogglePowerPlants}
+                onToggleAIDataCenters={onToggleAIDataCenters}
                 onToggleWfsCables={onToggleWfsCables}
                 onToggleHifldLines={onToggleHifldLines}
                 onToggleFiberCables={onToggleFiberCables}

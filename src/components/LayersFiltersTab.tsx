@@ -218,11 +218,13 @@ const REGION_COUNTRIES: Record<
 interface LayersFiltersTabProps {
   // Layer visibility
   showPowerPlants: boolean;
+  showAIDataCenters: boolean;
   showWfsCables: boolean;
   showHifldLines: boolean;
   showFiberCables: boolean;
   showFiberOverview: boolean;
   onTogglePowerPlants: () => void;
+  onToggleAIDataCenters: () => void;
   onToggleWfsCables: () => void;
   onToggleHifldLines: () => void;
   onToggleFiberCables: () => void;
@@ -306,9 +308,11 @@ type PowerRangePreset = 'small' | 'medium' | 'large' | 'custom';
 
 const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   showPowerPlants,
+  showAIDataCenters,
   showWfsCables,
   showHifldLines,
   onTogglePowerPlants,
+  onToggleAIDataCenters,
   onToggleWfsCables,
   onToggleHifldLines,
   showFiberCables,
@@ -612,6 +616,17 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
             />
             <span className="toggle-slider"></span>
             <span className="toggle-label">Power Plants</span>
+          </label>
+
+          <label className="toggle-item">
+            <input
+              type="checkbox"
+              checked={showAIDataCenters}
+              onChange={onToggleAIDataCenters}
+              className="toggle-input"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-label">AI Data Centers</span>
           </label>
 
           <label className="toggle-item">
