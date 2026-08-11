@@ -69,8 +69,8 @@ const AI_DATA_CENTER_STATUS_COLORS: Record<string, [number, number, number]> = {
 
 const getAIDataCenterRadius = (dataCenter: AIDataCenter) => {
   const powerMw = dataCenter.powerMw;
-  if (!powerMw || powerMw <= 0) return 5;
-  return Math.min(24, Math.max(5, Math.sqrt(powerMw) * 1.4));
+  if (!powerMw || powerMw <= 0) return 3.5;
+  return Math.min(13, Math.max(3.5, Math.sqrt(powerMw) * 0.7));
 };
 
 export function useMapLayers({
@@ -202,17 +202,17 @@ export function useMapLayers({
           data: aiDataCenters,
           pickable: true,
           cursor: 'pointer',
-          opacity: 0.85,
+          opacity: 0.68,
           filled: true,
           stroked: true,
           lineWidthMinPixels: 1,
           radiusUnits: 'pixels',
-          radiusMinPixels: 4,
-          radiusMaxPixels: 28,
+          radiusMinPixels: 3,
+          radiusMaxPixels: 14,
           getPosition: (d: AIDataCenter) => d.coordinates,
           getRadius: getAIDataCenterRadius,
           getFillColor: (d: AIDataCenter) => AI_DATA_CENTER_STATUS_COLORS[d.status] || AI_DATA_CENTER_STATUS_COLORS.Unknown,
-          getLineColor: [15, 23, 42, 220],
+          getLineColor: [255, 255, 255, 180],
           onHover: (info: { object?: AIDataCenter }) => setAIDataCenterHoverInfo(info.object || null),
         }),
       showWfsCables &&

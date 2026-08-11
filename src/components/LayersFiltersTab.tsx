@@ -929,7 +929,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                 className="toggle-input"
               />
               <span className="toggle-slider"></span>
-              <span className="toggle-label">Show only plants near infrastructure</span>
+              <span className="toggle-label">Show only facilities near infrastructure</span>
             </label>
 
             {showOnlyNearbyPlants && (
@@ -951,7 +951,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                   Distance: {proximityDistance} miles
                 </label>
                 <span className="plant-count">
-                  {proximityPlantCount} plants found
+                  {proximityPlantCount} facilities found
                 </span>
               </div>
               <input

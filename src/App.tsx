@@ -7,9 +7,9 @@ import type { AIDataCenter } from './models/AIDataCenter';
 import type { Cable } from './models/Cable';
 import type { FiberCable } from './models/FiberCable';
 import { loadWfsCableData } from './utils/wfsDataLoader';
-import { calculateDistance, generateCirclePolygon } from './utils/geoUtils';
+import { calculateDistance, generateCirclePolygon, isPointNearLine } from './utils/geoUtils';
 import type { LineSegment } from './utils/spatialIndex';
-import { createLineIndex } from './utils/spatialIndex';
+import { createLineIndex, queryLineIndex } from './utils/spatialIndex';
 import RBush from 'rbush';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useTheme } from './hooks/useTheme';
@@ -221,6 +221,8 @@ const getPlantState = (plant: PowerPlant): string => {
   const raw = plant.rawData?.['State / Province / Territory'] || plant.rawData?.State || '';
   return String(raw).trim().toUpperCase();
 };
+
+const getAIDataCenterState = (dataCenter: AIDataCenter): string => String(dataCenter.state || '').trim().toUpperCase();
 
 const getUsSector = (plant: PowerPlant): string =>
   plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
@@ -864,6 +866,44 @@ function App() {
     proximityDistance: debouncedDistance,
   });
 
+  const filteredAIDataCenters = useMemo(() => {
+    return aiDataCenters.filter((dataCenter) => {
+      const country = String(dataCenter.country || '').trim();
+      if (country && enabledCountries.size > 0 && !enabledCountries.has(country)) return false;
+
+      if (icpSelectedStates.size > 0 && country === 'US') {
+        const state = getAIDataCenterState(dataCenter);
+        if (!state || !icpSelectedStates.has(state)) return false;
+      }
+
+      const powerMw = dataCenter.powerMw;
+      const hasPowerFilter = minPowerOutput > powerRange.min || maxPowerOutput < powerRange.max;
+      if (hasPowerFilter) {
+        if (powerMw === undefined || !Number.isFinite(powerMw)) return false;
+        if (powerMw < minPowerOutput || powerMw > maxPowerOutput) return false;
+      }
+
+      if (showOnlyNearbyPlants && lineIndex) {
+        const nearbySegments = queryLineIndex(lineIndex, dataCenter.coordinates, debouncedDistance);
+        const isNearby = nearbySegments.some((segment) => isPointNearLine(dataCenter.coordinates, segment, debouncedDistance));
+        if (!isNearby) return false;
+      }
+
+      return true;
+    });
+  }, [
+    aiDataCenters,
+    enabledCountries,
+    icpSelectedStates,
+    lineIndex,
+    maxPowerOutput,
+    minPowerOutput,
+    powerRange.max,
+    powerRange.min,
+    showOnlyNearbyPlants,
+    debouncedDistance,
+  ]);
+
   const icpMapFilteredPowerPlants = useMemo(() => {
     const threshold = Number.isFinite(icpExcessThresholdMw) ? icpExcessThresholdMw : 0;
     const states = icpSelectedStates;
@@ -887,8 +927,8 @@ function App() {
   // Proximity UI count should reflect *all* active filters (including ICP filters).
   const proximityPlantCount = useMemo(() => {
     if (!showOnlyNearbyPlants) return 0;
-    return icpMapFilteredPowerPlants.length;
-  }, [icpMapFilteredPowerPlants.length, showOnlyNearbyPlants]);
+    return icpMapFilteredPowerPlants.length + (showAIDataCenters ? filteredAIDataCenters.length : 0);
+  }, [filteredAIDataCenters.length, icpMapFilteredPowerPlants.length, showAIDataCenters, showOnlyNearbyPlants]);
 
   // Feed the ICP tab the base filtered list so state options do not disappear
   // after selecting a single state; the tab applies ICP-specific filters itself.
@@ -993,7 +1033,7 @@ function App() {
     showPowerPlants,
     filteredPowerPlants: icpMapFilteredPowerPlants,
     showAIDataCenters,
-    aiDataCenters,
+    aiDataCenters: filteredAIDataCenters,
     sizeByOption,
     sizeMultiplier,
     capacityWeight,
@@ -1031,6 +1071,12 @@ function App() {
         <div className="data-warning">
           <AlertTriangle size={20} />
           <span>No AI data centers are available for this layer.</span>
+        </div>
+      )}
+      {showAIDataCenters && !loadingAIDataCenters && !aiDataCentersError && aiDataCenterCount > 0 && filteredAIDataCenters.length === 0 && (
+        <div className="data-warning">
+          <AlertTriangle size={20} />
+          <span>No AI data centers match the active filters.</span>
         </div>
       )}
       
