@@ -1385,9 +1385,10 @@ function App() {
                     </div>
 
                     <h4>Overview</h4>
+                    {renderAIDataCenterField('Status', dataCenter.status)}
                     {renderAIDataCenterField('Developer', dataCenter.developer)}
                     {renderAIDataCenterField('Operator', dataCenter.operator)}
-                    {renderAIDataCenterField('Type', dataCenter.dataCenterType)}
+                    {renderAIDataCenterField('Company type', dataCenter.dataCenterType)}
                     {renderAIDataCenterField('Address', dataCenter.address)}
                     {renderAIDataCenterField('City', dataCenter.city)}
                     {renderAIDataCenterField('County', dataCenter.county)}

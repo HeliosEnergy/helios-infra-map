@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { PowerRange } from '../utils/powerRangeCalculator';
 import DualRangeSlider from './DualRangeSlider';
 import './LayersFiltersTab.css';
@@ -367,6 +367,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   const [minInputValue, setMinInputValue] = useState<string>(minPowerOutput.toString());
   const [maxInputValue, setMaxInputValue] = useState<string>(maxPowerOutput.toString());
   const [isManuallyAdjustingPowerRange, setIsManuallyAdjustingPowerRange] = useState(false);
+  const lastResetNonceRef = useRef(layersFiltersResetNonce);
   
   // State for capacity factor input values
   const [minCapacityFactorInput, setMinCapacityFactorInput] = useState<string>(minCapacityFactor.toString());
@@ -571,6 +572,9 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   }, [maxCapacityFactor]);
 
   useEffect(() => {
+    if (lastResetNonceRef.current === layersFiltersResetNonce) return;
+    lastResetNonceRef.current = layersFiltersResetNonce;
+
     // Reset UI-only state when tab-level reset triggers.
     setShowAdvancedFilters(false);
     setSelectedPresets(new Set());
