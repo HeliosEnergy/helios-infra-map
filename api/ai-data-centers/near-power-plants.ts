@@ -43,6 +43,7 @@ type PowerPlant = {
   source: string;
   coordinates: [number, number];
   country: string;
+  rawData?: Record<string, string>;
 };
 
 type IndexedPowerPlant = {
@@ -70,6 +71,42 @@ const clampRadius = (value: string | string[] | undefined) => {
   const parsed = Number(getSingleQueryValue(value));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RADIUS_MILES;
   return Math.min(MAX_RADIUS_MILES, Math.max(1, parsed));
+};
+
+const getSectorFilter = (value: string | string[] | undefined) => {
+  const sector = getSingleQueryValue(value);
+  if (
+    sector === 'independent' ||
+    sector === 'electric_utility' ||
+    sector === 'commercial' ||
+    sector === 'other'
+  ) {
+    return sector;
+  }
+  return 'all';
+};
+
+const getUsSector = (plant: PowerPlant): string =>
+  plant.country === 'US' ? String(plant.rawData?.Sector || '').trim() : '';
+
+const classifyUsSector = (
+  sector: string
+): 'independent' | 'electric_utility' | 'commercial' | 'other' => {
+  const normalized = sector.toUpperCase();
+  if (!normalized) return 'other';
+  if (normalized.includes('IPP')) return 'independent';
+  if (normalized.includes('ELECTRIC UTILITY')) return 'electric_utility';
+  if (normalized.includes('COMMERCIAL') || normalized.includes('INDUSTRIAL')) return 'commercial';
+  return 'other';
+};
+
+const matchesSectorFilter = (
+  plant: PowerPlant,
+  sectorFilter: 'all' | 'independent' | 'electric_utility' | 'commercial' | 'other'
+) => {
+  if (sectorFilter === 'all') return true;
+  if (plant.country !== 'US') return true;
+  return classifyUsSector(getUsSector(plant)) === sectorFilter;
 };
 
 const getPointCoordinates = (feature: GeoJsonFeature): [number, number] | null => {
@@ -169,6 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requireAuth(req, res)) return;
 
   const radiusMiles = clampRadius(req.query.radiusMiles);
+  const sectorFilter = getSectorFilter(req.query.sector);
   const { filters, error } = parsePlantQuery(req.query as Record<string, string | string[] | undefined>);
 
   if (error) {
@@ -180,7 +218,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       loadAIDataCenters(),
       getUnifiedPowerPlantDataset(),
     ]);
-    const filteredPowerPlants = applyPlantFilters(powerPlantDataset, filters) as PowerPlant[];
+    const filteredPowerPlants = (applyPlantFilters(powerPlantDataset, filters) as PowerPlant[]).filter((plant) =>
+      matchesSectorFilter(plant, sectorFilter)
+    );
     const powerPlantIndex = buildPowerPlantIndex(filteredPowerPlants);
 
     const features = aiDataset.features
@@ -226,6 +266,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(aiDataset.metadata || {}),
         proximityMode: 'near-power-plants',
         proximityRadiusMiles: radiusMiles,
+        powerPlantSectorFilter: sectorFilter,
         filteredPowerPlantCount: filteredPowerPlants.length,
         filteredCount: features.length,
         unfilteredCount: aiDataset.features.length,
