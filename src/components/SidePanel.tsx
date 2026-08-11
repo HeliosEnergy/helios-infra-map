@@ -72,6 +72,10 @@ interface SidePanelProps {
     onProximityDistanceChange: (value: number) => void;
     proximityPlantCount: number;
     onOpenProximityDialog: () => void;
+    showAIDataCentersNearPowerPlants: boolean;
+    aiDataCenterPowerPlantRadius: number;
+    onToggleAIDataCentersNearPowerPlants: () => void;
+    onAIDataCenterPowerPlantRadiusChange: (value: number) => void;
 
    // Visualization controls
    sizeMultiplier: number;
@@ -204,6 +208,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
    onProximityDistanceChange,
    proximityPlantCount,
    onOpenProximityDialog,
+   showAIDataCentersNearPowerPlants,
+   aiDataCenterPowerPlantRadius,
+   onToggleAIDataCentersNearPowerPlants,
+   onAIDataCenterPowerPlantRadiusChange,
 
    // Visualization controls
    sizeMultiplier,
@@ -345,6 +353,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 onProximityDistanceChange={onProximityDistanceChange}
                 proximityPlantCount={proximityPlantCount}
                 onOpenProximityDialog={onOpenProximityDialog}
+                showAIDataCentersNearPowerPlants={showAIDataCentersNearPowerPlants}
+                aiDataCenterPowerPlantRadius={aiDataCenterPowerPlantRadius}
+                onToggleAIDataCentersNearPowerPlants={onToggleAIDataCentersNearPowerPlants}
+                onAIDataCenterPowerPlantRadiusChange={onAIDataCenterPowerPlantRadiusChange}
                 // Distance measurement props
                 isMeasuringDistance={isMeasuringDistance}
                 measuredDistanceMiles={measuredDistanceMiles}

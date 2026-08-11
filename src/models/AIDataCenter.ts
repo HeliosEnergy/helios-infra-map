@@ -11,6 +11,16 @@ export type AIDataCenterSource = {
   url: string;
 };
 
+export type NearestPowerPlant = {
+  id: string;
+  name: string;
+  distanceMiles: number;
+  source?: string;
+  outputDisplay?: string;
+  country?: string;
+  coordinates?: [number, number];
+};
+
 export interface AIDataCenter {
   id: string;
   originalId?: string;
@@ -41,6 +51,8 @@ export interface AIDataCenter {
   estimatedHomesEquivalent?: number;
   citationCount?: number;
   sources?: AIDataCenterSource[];
+  nearbyPowerPlantCount?: number;
+  nearestPowerPlant?: NearestPowerPlant;
   sourceEndpoint?: string;
   retrievedAtUtc?: string;
   sourceType: 'ai-data-center-workbook';
