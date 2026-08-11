@@ -4,9 +4,29 @@ import { authenticatedFetch } from '../utils/auth';
 
 type UseAIDataCentersParams = {
   enabled: boolean;
+  nearPowerPlantsEnabled?: boolean;
+  nearPowerPlantsRadiusMiles?: number;
+  filteredSources?: ReadonlySet<string>;
+  enabledCountries?: ReadonlySet<string>;
+  filteredStatuses?: ReadonlySet<string>;
+  minPowerOutput?: number;
+  maxPowerOutput?: number;
+  minCapacityFactor?: number;
+  maxCapacityFactor?: number;
 };
 
 const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const toSortedCsv = (values?: ReadonlySet<string>) => {
+  if (!values || values.size === 0) return null;
+  return Array.from(values).sort().join(',');
+};
+
+const appendNumberParam = (params: URLSearchParams, key: string, value: number | undefined) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    params.set(key, String(value));
+  }
+};
 
 const toAIDataCenter = (feature: AIDataCenterFeatureCollection['features'][number]): AIDataCenter | null => {
   if (feature.geometry?.type !== 'Point' || !Array.isArray(feature.geometry.coordinates)) return null;
@@ -49,17 +69,58 @@ const toAIDataCenter = (feature: AIDataCenterFeatureCollection['features'][numbe
     estimatedHomesEquivalent: properties.estimatedHomesEquivalent,
     citationCount: properties.citationCount,
     sources: properties.sources,
+    nearbyPowerPlantCount: properties.nearbyPowerPlantCount,
+    nearestPowerPlant: properties.nearestPowerPlant,
     sourceEndpoint: properties.sourceEndpoint,
     retrievedAtUtc: properties.retrievedAtUtc,
     sourceType: 'ai-data-center-workbook',
   };
 };
 
-export function useAIDataCenters({ enabled }: UseAIDataCentersParams) {
+export function useAIDataCenters({
+  enabled,
+  nearPowerPlantsEnabled = false,
+  nearPowerPlantsRadiusMiles,
+  filteredSources,
+  enabledCountries,
+  filteredStatuses,
+  minPowerOutput,
+  maxPowerOutput,
+  minCapacityFactor,
+  maxCapacityFactor,
+}: UseAIDataCentersParams) {
   const [dataCenters, setDataCenters] = useState<AIDataCenter[]>([]);
   const [metadata, setMetadata] = useState<AIDataCenterFeatureCollection['metadata'] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sourceKey = useMemo(() => toSortedCsv(filteredSources), [filteredSources]);
+  const countryKey = useMemo(() => toSortedCsv(enabledCountries), [enabledCountries]);
+  const statusKey = useMemo(() => toSortedCsv(filteredStatuses), [filteredStatuses]);
+  const endpoint = useMemo(() => {
+    if (!nearPowerPlantsEnabled) return '/api/ai-data-centers';
+
+    const params = new URLSearchParams();
+    appendNumberParam(params, 'radiusMiles', nearPowerPlantsRadiusMiles);
+    if (sourceKey) params.set('sources', sourceKey);
+    if (countryKey) params.set('countries', countryKey);
+    if (statusKey) params.set('statuses', statusKey);
+    appendNumberParam(params, 'minCapacity', minPowerOutput);
+    appendNumberParam(params, 'maxCapacity', maxPowerOutput);
+    appendNumberParam(params, 'minCapacityFactor', minCapacityFactor);
+    appendNumberParam(params, 'maxCapacityFactor', maxCapacityFactor);
+
+    return `/api/ai-data-centers/near-power-plants?${params.toString()}`;
+  }, [
+    countryKey,
+    maxCapacityFactor,
+    maxPowerOutput,
+    minCapacityFactor,
+    minPowerOutput,
+    nearPowerPlantsEnabled,
+    nearPowerPlantsRadiusMiles,
+    sourceKey,
+    statusKey,
+  ]);
 
   useEffect(() => {
     if (!enabled) {
@@ -75,7 +136,7 @@ export function useAIDataCenters({ enabled }: UseAIDataCentersParams) {
       setError(null);
 
       try {
-        const response = await authenticatedFetch('/api/ai-data-centers', {
+        const response = await authenticatedFetch(endpoint, {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -114,7 +175,7 @@ export function useAIDataCenters({ enabled }: UseAIDataCentersParams) {
       cancelled = true;
       controller.abort();
     };
-  }, [enabled]);
+  }, [enabled, endpoint]);
 
   const visibleCount = useMemo(() => dataCenters.length, [dataCenters]);
 

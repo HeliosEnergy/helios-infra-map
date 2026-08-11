@@ -276,6 +276,10 @@ interface LayersFiltersTabProps {
    onProximityDistanceChange: (value: number) => void;
    proximityPlantCount: number;
    onOpenProximityDialog: () => void;
+   showAIDataCentersNearPowerPlants: boolean;
+   aiDataCenterPowerPlantRadius: number;
+   onToggleAIDataCentersNearPowerPlants: () => void;
+   onAIDataCenterPowerPlantRadiusChange: (value: number) => void;
 
   // Distance measurement
   isMeasuringDistance: boolean;
@@ -319,24 +323,9 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   showFiberOverview,
   onToggleFiberCables,
   onToggleFiberOverview,
-  showCanadianPlants: _showCanadianPlants,
-  showAmericanPlants: _showAmericanPlants,
-  showKazakhstanPlants: _showKazakhstanPlants,
-  showUaePlants: _showUaePlants,
-  showIndiaPlants: _showIndiaPlants,
-  showKyrgyzstanPlants: _showKyrgyzstanPlants,
-  onToggleCanadianPlants: _onToggleCanadianPlants,
-  onToggleAmericanPlants: _onToggleAmericanPlants,
-  onToggleKazakhstanPlants: _onToggleKazakhstanPlants,
-  onToggleUaePlants: _onToggleUaePlants,
-  onToggleIndiaPlants: _onToggleIndiaPlants,
-  onToggleKyrgyzstanPlants: _onToggleKyrgyzstanPlants,
   allCountries,
   enabledCountries,
   onToggleCountryFilter,
-  allStatuses: _allStatuses,
-  filteredStatuses: _filteredStatuses,
-  onToggleStatusFilter: _onToggleStatusFilter,
   minPowerOutput,
   maxPowerOutput,
   onMinPowerOutputChange,
@@ -352,6 +341,10 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   onProximityDistanceChange,
   proximityPlantCount,
   onOpenProximityDialog,
+  showAIDataCentersNearPowerPlants,
+  aiDataCenterPowerPlantRadius,
+  onToggleAIDataCentersNearPowerPlants,
+  onAIDataCenterPowerPlantRadiusChange,
   isMeasuringDistance,
   measuredDistanceMiles,
   onStartDistanceMeasurement,
@@ -372,6 +365,7 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   // State for capacity factor input values
   const [minCapacityFactorInput, setMinCapacityFactorInput] = useState<string>(minCapacityFactor.toString());
   const [maxCapacityFactorInput, setMaxCapacityFactorInput] = useState<string>(maxCapacityFactor.toString());
+  const [aiRadiusInput, setAIRadiusInput] = useState<string>(aiDataCenterPowerPlantRadius.toString());
   
   // State for country dropdown
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
@@ -572,6 +566,17 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
   }, [maxCapacityFactor]);
 
   useEffect(() => {
+    setAIRadiusInput(aiDataCenterPowerPlantRadius.toString());
+  }, [aiDataCenterPowerPlantRadius]);
+
+  const commitAIRadiusInput = () => {
+    const parsed = Number(aiRadiusInput);
+    const nextRadius = Number.isFinite(parsed) ? Math.min(250, Math.max(1, Math.round(parsed))) : aiDataCenterPowerPlantRadius;
+    setAIRadiusInput(nextRadius.toString());
+    onAIDataCenterPowerPlantRadiusChange(nextRadius);
+  };
+
+  useEffect(() => {
     if (lastResetNonceRef.current === layersFiltersResetNonce) return;
     lastResetNonceRef.current = layersFiltersResetNonce;
 
@@ -586,7 +591,8 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
     setMaxInputValue(maxPowerOutput.toString());
     setMinCapacityFactorInput(minCapacityFactor.toString());
     setMaxCapacityFactorInput(maxCapacityFactor.toString());
-  }, [layersFiltersResetNonce, maxCapacityFactor, maxPowerOutput, minCapacityFactor, minPowerOutput]);
+    setAIRadiusInput(aiDataCenterPowerPlantRadius.toString());
+  }, [aiDataCenterPowerPlantRadius, layersFiltersResetNonce, maxCapacityFactor, maxPowerOutput, minCapacityFactor, minPowerOutput]);
 
   return (
     <div className="layers-filters-tab">
@@ -1185,6 +1191,66 @@ const LayersFiltersTab: React.FC<LayersFiltersTabProps> = ({
                 }}
                 step={1}
               />
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">AI Data Centers Near Power Plants</label>
+              <label className="toggle-item">
+                <input
+                  type="checkbox"
+                  checked={showAIDataCentersNearPowerPlants}
+                  onChange={onToggleAIDataCentersNearPowerPlants}
+                  className="toggle-input"
+                />
+                <span className="toggle-slider"></span>
+                <span className="toggle-label">Only show AI data centers within radius of power plants</span>
+              </label>
+              {showAIDataCentersNearPowerPlants && (
+                <div className="proximity-control">
+                  <div className="proximity-info">
+                    <label htmlFor="ai-power-plant-radius" className="control-label">
+                      Radius: {aiDataCenterPowerPlantRadius} miles
+                    </label>
+                    <span className="plant-count">Uses current power plant filters</span>
+                  </div>
+                  <input
+                    id="ai-power-plant-radius"
+                    type="range"
+                    min="1"
+                    max="250"
+                    step="1"
+                    value={aiDataCenterPowerPlantRadius}
+                    onChange={(e) => onAIDataCenterPowerPlantRadiusChange(Number(e.target.value))}
+                    className="proximity-slider"
+                  />
+                  <div className="slider-labels">
+                    <span>1 mile</span>
+                    <span>250 miles</span>
+                  </div>
+                  <div className="custom-range-inputs">
+                    <div className="range-input-group">
+                      <label htmlFor="ai-power-plant-radius-input" className="range-input-label">Custom:</label>
+                      <input
+                        id="ai-power-plant-radius-input"
+                        type="number"
+                        min={1}
+                        max={250}
+                        value={aiRadiusInput}
+                        onChange={(e) => setAIRadiusInput(e.target.value)}
+                        onBlur={commitAIRadiusInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        className="range-input"
+                        step="1"
+                      />
+                      <span className="range-input-unit">miles</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="filter-section">

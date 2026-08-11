@@ -320,9 +320,12 @@ function App() {
   const [showOnlyNearbyPlants, setShowOnlyNearbyPlants] = useState<boolean>(false);
   const [proximityDistance, setProximityDistance] = useState<number>(0);
   const [sliderValue, setSliderValue] = useState<number>(0);
+  const [showAIDataCentersNearPowerPlants, setShowAIDataCentersNearPowerPlants] = useState<boolean>(false);
+  const [aiDataCenterPowerPlantRadius, setAIDataCenterPowerPlantRadius] = useState<number>(25);
   const [isMeasuringDistance, setIsMeasuringDistance] = useState<boolean>(false);
   const [distancePoints, setDistancePoints] = useState<[number, number][]>([]);
   const debouncedDistance = useDebounce(sliderValue, 300);
+  const debouncedAIDataCenterPowerPlantRadius = useDebounce(aiDataCenterPowerPlantRadius, 300);
   const measuredDistanceMiles = useMemo(
     () => (distancePoints.length === 2 ? calculateDistance(distancePoints[0], distancePoints[1]) : null),
     [distancePoints]
@@ -439,7 +442,18 @@ function App() {
     loading: loadingAIDataCenters,
     error: aiDataCentersError,
     visibleCount: aiDataCenterCount,
-  } = useAIDataCenters({ enabled: showAIDataCenters });
+  } = useAIDataCenters({
+    enabled: showAIDataCenters,
+    nearPowerPlantsEnabled: showAIDataCentersNearPowerPlants,
+    nearPowerPlantsRadiusMiles: debouncedAIDataCenterPowerPlantRadius,
+    filteredSources,
+    enabledCountries,
+    filteredStatuses,
+    minPowerOutput,
+    maxPowerOutput,
+    minCapacityFactor,
+    maxCapacityFactor,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -687,6 +701,8 @@ function App() {
     setShowOnlyNearbyPlants(false);
     setSliderValue(0);
     setProximityDistance(0);
+    setShowAIDataCentersNearPowerPlants(false);
+    setAIDataCenterPowerPlantRadius(25);
     setIsMeasuringDistance(false);
     setDistancePoints([]);
 
@@ -718,6 +734,8 @@ function App() {
     setShowOnlyNearbyPlants(false);
     setSliderValue(0);
     setProximityDistance(0);
+    setShowAIDataCentersNearPowerPlants(false);
+    setAIDataCenterPowerPlantRadius(25);
     setIsMeasuringDistance(false);
     setDistancePoints([]);
 
@@ -1291,6 +1309,12 @@ function App() {
         onProximityDistanceChange={handleSliderChange}
         proximityPlantCount={proximityPlantCount}
         onOpenProximityDialog={() => setIsProximityDialogOpen(true)}
+        showAIDataCentersNearPowerPlants={showAIDataCentersNearPowerPlants}
+        aiDataCenterPowerPlantRadius={aiDataCenterPowerPlantRadius}
+        onToggleAIDataCentersNearPowerPlants={() =>
+          setShowAIDataCentersNearPowerPlants(!showAIDataCentersNearPowerPlants)
+        }
+        onAIDataCenterPowerPlantRadiusChange={setAIDataCenterPowerPlantRadius}
         sizeMultiplier={sizeMultiplier}
         setSizeMultiplier={setSizeMultiplier}
         capacityWeight={capacityWeight}
@@ -1409,6 +1433,27 @@ function App() {
                       dataCenter.capitalExpenditure
                         ? `$${dataCenter.capitalExpenditure.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                         : dataCenter.capitalExpenditureRaw
+                    )}
+
+                    {dataCenter.nearestPowerPlant && (
+                      <>
+                        <h4>Power plant proximity</h4>
+                        {renderAIDataCenterField(
+                          'Nearby power plants',
+                          dataCenter.nearbyPowerPlantCount
+                            ? `${dataCenter.nearbyPowerPlantCount.toLocaleString()} within selected radius`
+                            : undefined
+                        )}
+                        {renderAIDataCenterField('Nearest power plant', dataCenter.nearestPowerPlant.name)}
+                        {renderAIDataCenterField(
+                          'Nearest distance',
+                          `${dataCenter.nearestPowerPlant.distanceMiles.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })} miles`
+                        )}
+                        {renderAIDataCenterField('Nearest plant capacity', dataCenter.nearestPowerPlant.outputDisplay)}
+                        {renderAIDataCenterField('Nearest plant source', dataCenter.nearestPowerPlant.source)}
+                      </>
                     )}
 
                     <h4>Estimated impact</h4>
