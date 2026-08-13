@@ -11,9 +11,7 @@ import {
   type GeoJsonLikeFeature,
 } from '../utils/vectorFeatureUtils';
 
-const FIBER_OVERVIEW_URL =
-  import.meta.env.VITE_FIBER_OVERVIEW_URL ||
-  'https://helios-dataanalysisbucket.s3.us-east-1.amazonaws.com/rextag_data_simplified.json';
+const FIBER_OVERVIEW_API_URL = '/api/fiber-overview';
 const HIFLD_S3_API_URL = '/api/hifld-s3';
 
 type UseVectorTileLayersParams = {
@@ -72,7 +70,7 @@ export function useVectorTileLayers({
   const qLon = Math.round(longitude * 10) / 10;
   const qLat = Math.round(latitude * 10) / 10;
 
-  // Overview dataset fetch (single simplified GeoJSON from env-configured URL)
+  // Overview dataset fetch (single simplified GeoJSON through authenticated API)
   useEffect(() => {
     if (!showFiberOverview) {
       setFiberOverviewFeatures([]);
@@ -86,7 +84,7 @@ export function useVectorTileLayers({
     const controller = new AbortController();
     overviewAbortRef.current = controller;
 
-    fetch(FIBER_OVERVIEW_URL, { signal: controller.signal })
+    authenticatedFetch(FIBER_OVERVIEW_API_URL, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`fiber overview ${res.status}`);
         return res.json();
@@ -233,7 +231,6 @@ export function useVectorTileLayers({
         abortRef.current.abort();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showFiberCables, qZoom, qLon, qLat, onFiberViewportCables]);
 
   // ─── Fiber PathLayer (zoom-adaptive styling) ───────────────────────

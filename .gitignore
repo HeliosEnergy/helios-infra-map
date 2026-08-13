@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+!.env.example
 
 # Local/generated data artifacts
 data/aidatacentermap-data.xlsx

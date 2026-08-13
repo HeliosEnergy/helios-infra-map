@@ -391,7 +391,10 @@ const DataVisualizations: React.FC = () => {
                 cy="50%"
                 outerRadius={50}
                 dataKey="capacity"
-                label={({ capacity }) => `${capacity}MW`}
+                label={({ payload }) => {
+                  const capacity = (payload as { capacity?: number } | undefined)?.capacity;
+                  return capacity ? `${capacity}MW` : '';
+                }}
                 labelLine={false}
               >
                 {technologyData.map((_, index) => (
