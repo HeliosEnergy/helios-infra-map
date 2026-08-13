@@ -1,28 +1,35 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireAuth } from './_lib/auth.js';
+import { applyCors, handleCorsPreflight } from './_lib/cors.js';
+import { applyRateLimit } from './_lib/rateLimit.js';
 
 // Simple in-memory cache (CSV text)
 let cache: { data: string; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const RATE_LIMIT = {
+  key: 'us-power-plants-csv',
+  maxRequests: 20,
+  windowMs: 60 * 1000,
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+  if (handleCorsPreflight(req, res)) return;
+  if (!applyCors(req, res)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
   }
+  if (!applyRateLimit(req, res, RATE_LIMIT)) return;
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET, OPTIONS');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!requireAuth(req, res)) return;
+
   // Check cache
   const now = Date.now();
   if (cache && now - cache.timestamp < CACHE_TTL) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     return res.status(200).send(cache.data);
   }
@@ -44,10 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     cache = { data: csvText, timestamp: now };
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
 
     return res.status(200).send(csvText);

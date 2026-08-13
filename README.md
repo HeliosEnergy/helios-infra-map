@@ -121,13 +121,9 @@ To get the project up and running locally:
     npm install
     ```
 3.  **Set up environment variables:**
-    Create a `.env` file in the project root based on `.env.example` (if available) or the following:
-    ```
-    VITE_MAPBOX_TOKEN=YOUR_MAPBOX_ACCESS_TOKEN
-    # Optional: FIBER_TILES_S3_URL=YOUR_S3_BUCKET_URL_FOR_FIBER_TILES
-    # Optional: FIBER_TILE_SIZE=5 # or 2
-    ```
-    You will need a Mapbox Access Token.
+    Create a local `.env` file from `.env.example`. Do not commit `.env`.
+    You will need a dedicated public Mapbox token in `VITE_MAPBOX_TOKEN`.
+    Restrict that token in Mapbox to the production and preview domains that serve this app.
 4.  **Run in development mode:**
     ```bash
     npm run dev
@@ -148,3 +144,12 @@ To get the project up and running locally:
     ```
 
 Remember to consult the `package.json` for all available scripts.
+
+## Security Deployment Notes
+
+- Keep `.env` out of Git. Use `.env.example` for variable names only.
+- Store server-side data URLs in Vercel environment variables such as `GLOBAL_POWER_PLANT_DB_S3_URL`, `US_EIA_PLANTS_CSV_S3_URL`, `HIFLD_S3_URL`, `FIBER_OVERVIEW_S3_URL`, `FIBER_TILES_S3_URL`, and `AI_DATA_CENTERS_S3_URL`.
+- Do not expose S3 bucket URLs through `VITE_*` variables or frontend code.
+- Set `ALLOWED_ORIGINS` in production to the approved app domains.
+- After deploying a restricted replacement Mapbox token and verifying the map works, revoke the old Mapbox token.
+- Rotate any secrets that were previously present in tracked `.env` history.
