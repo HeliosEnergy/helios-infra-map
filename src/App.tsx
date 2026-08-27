@@ -364,6 +364,7 @@ function App() {
   const [isFilterStateReady, setIsFilterStateReady] = useState(false);
   const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
   const [, setFiltersResetNonce] = useState<number>(0);
+  const [isSidePanelCollapsed, setIsSidePanelCollapsed] = useState<boolean>(false);
   const [layersFiltersResetNonce, setLayersFiltersResetNonce] = useState<number>(0);
   const [legendResetNonce, setLegendResetNonce] = useState<number>(0);
   const [visualizationResetNonce, setVisualizationResetNonce] = useState<number>(0);
@@ -969,7 +970,7 @@ function App() {
   });
 
   useEffect(() => {
-    if (!showFiberCables || viewState.zoom < 4) {
+    if (!showFiberCables || viewState.zoom < 3) {
       setLoadedFiberCables([]);
     }
   }, [showFiberCables, viewState.zoom]);
@@ -1262,6 +1263,8 @@ function App() {
       {/* Unified Side Panel */}
       <SidePanel
         showPowerPlants={showPowerPlants}
+        isCollapsed={isSidePanelCollapsed}
+        onToggleCollapsed={() => setIsSidePanelCollapsed((collapsed) => !collapsed)}
         showAIDataCenters={showAIDataCenters}
         showWfsCables={showWfsCables}
         showHifldLines={showHifldLines}

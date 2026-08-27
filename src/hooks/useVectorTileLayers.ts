@@ -238,7 +238,7 @@ export function useVectorTileLayers({
     const usingOverviewLayer = zoom < 8;
     const activeFeatures = usingOverviewLayer ? fiberOverviewFeatures : fiberFeatures;
     const shouldShow =
-      zoom >= 4 && ((usingOverviewLayer && showFiberOverview) || (!usingOverviewLayer && showFiberCables));
+      zoom >= 3 && ((usingOverviewLayer && showFiberOverview) || (!usingOverviewLayer && showFiberCables));
 
     if (!shouldShow || activeFeatures.length === 0) {
       return null;
