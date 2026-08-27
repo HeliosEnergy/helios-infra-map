@@ -3,13 +3,13 @@ import {
   getBearerToken,
   isHeliosEmailLoginValid,
   isAuthConfigured,
-  isPasswordValid,
   issueAuthToken,
   verifyAuthToken,
 } from './_lib/auth.js';
 import { applyCors, handleCorsPreflight } from './_lib/cors.js';
 import { applyRateLimit } from './_lib/rateLimit.js';
 import { validateApprovedUserLogin } from './_lib/accessControl.js';
+import { recordMapLoginSuccess } from './_lib/usageTracking.js';
 
 const AUTH_RATE_LIMIT = {
   key: 'auth',
@@ -70,50 +70,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   let tokenSubject = 'helios-user';
+  let authMethod = 'approved_access';
 
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required.' });
+  }
   if (!password) {
     return res.status(400).json({ error: 'Password is required.' });
   }
 
-  if (email) {
-    if (isHeliosEmailLoginValid(email, password.trim())) {
-      tokenSubject = email;
-    } else {
-      try {
-        const loginResult = await validateApprovedUserLogin({
-          email,
-          password: password.trim(),
-        });
-        if (!loginResult.ok) {
-          if (loginResult.reason === 'pending') {
-            return res.status(403).json({ error: 'Access request is pending approval.' });
-          }
-          if (loginResult.reason === 'rejected') {
-            return res.status(403).json({ error: 'Your access request was rejected.' });
-          }
-          if (loginResult.reason === 'access_expired') {
-            return res.status(403).json({ error: 'Access expired. Please request access again.' });
-          }
-          return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-        tokenSubject = email;
-      } catch (error) {
-        console.error('Email auth failed:', error);
-        return res.status(500).json({ error: 'Unable to validate access right now.' });
-      }
-    }
+  if (isHeliosEmailLoginValid(email, password.trim())) {
+    tokenSubject = email;
+    authMethod = 'helios_domain';
   } else {
-    if (!isAuthConfigured()) {
-      return res.status(503).json({
-        error: 'Server auth is not configured. Set APP_PASSWORD (or APP_PASSWORDS) and AUTH_JWT_SECRET.',
+    try {
+      const loginResult = await validateApprovedUserLogin({
+        email,
+        password: password.trim(),
       });
-    }
-    if (!isPasswordValid(password.trim())) {
-      return res.status(401).json({ error: 'Invalid password' });
+      if (!loginResult.ok) {
+        if (loginResult.reason === 'pending') {
+          return res.status(403).json({ error: 'Access request is pending approval.' });
+        }
+        if (loginResult.reason === 'rejected') {
+          return res.status(403).json({ error: 'Your access request was rejected.' });
+        }
+        if (loginResult.reason === 'access_expired') {
+          return res.status(403).json({ error: 'Access expired. Please request access again.' });
+        }
+        return res.status(401).json({ error: 'Invalid email or password.' });
+      }
+      tokenSubject = email;
+    } catch (error) {
+      console.error('Email auth failed:', error);
+      return res.status(500).json({ error: 'Unable to validate access right now.' });
     }
   }
 
   const { token, expiresAt } = issueAuthToken(undefined, tokenSubject);
+  try {
+    await recordMapLoginSuccess({ email: tokenSubject, req, authMethod });
+  } catch (error) {
+    console.warn('Failed to record map login usage:', error);
+  }
+
   return res.status(200).json({
     token,
     expiresAt,

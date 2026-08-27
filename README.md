@@ -153,3 +153,21 @@ Remember to consult the `package.json` for all available scripts.
 - Set `ALLOWED_ORIGINS` in production to the approved app domains.
 - After deploying a restricted replacement Mapbox token and verifying the map works, revoke the old Mapbox token.
 - Rotate any secrets that were previously present in tracked `.env` history.
+
+## Map Usage Tracking
+
+Run `supabase-map-usage-tracking.sql` in the Supabase SQL editor to enable login and active-user tracking.
+
+- Successful email logins are written to `map_login_events`.
+- Signed-in users send a lightweight heartbeat to `/api/usage/heartbeat` once per minute.
+- `map_user_activity` stores the latest activity timestamp per email.
+- `map_active_users` shows users seen in the last five minutes.
+- The app stores a hashed IP value and user agent for security review; it does not store passwords or auth tokens.
+
+Useful Supabase checks:
+
+```sql
+select * from public.map_active_users;
+select * from public.map_login_events order by created_at desc limit 100;
+select * from public.map_user_activity order by last_seen_at desc;
+```

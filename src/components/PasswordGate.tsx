@@ -23,6 +23,7 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const isGateEnabled = true;
+  const isAuthenticated = isUnlocked && !!authToken;
 
   const handleLogout = useCallback(() => {
     clearAuthToken();
@@ -140,6 +141,22 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     }
   };
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const sendHeartbeat = async () => {
+      try {
+        await authenticatedFetchWithToken('/api/usage/heartbeat', { method: 'POST' });
+      } catch {
+        // Usage tracking should never interrupt the map experience.
+      }
+    };
+
+    sendHeartbeat();
+    const intervalId = window.setInterval(sendHeartbeat, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, [isAuthenticated, authToken]);
+
   const handleRequestAccess = async () => {
     setError('');
     setInfo('');
@@ -208,8 +225,6 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       </div>
     </div>
   );
-
-  const isAuthenticated = isUnlocked && !!authToken;
 
   return (
     <PasswordGateProvider
