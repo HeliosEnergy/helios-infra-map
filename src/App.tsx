@@ -446,6 +446,7 @@ function App() {
     enabled: showAIDataCenters,
     nearPowerPlantsEnabled: showAIDataCentersNearPowerPlants,
     nearPowerPlantsRadiusMiles: debouncedAIDataCenterPowerPlantRadius,
+    powerPlantSectorFilter: icpSectorFilter,
     filteredSources,
     enabledCountries,
     filteredStatuses,

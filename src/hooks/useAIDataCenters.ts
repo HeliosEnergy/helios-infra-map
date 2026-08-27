@@ -6,6 +6,7 @@ type UseAIDataCentersParams = {
   enabled: boolean;
   nearPowerPlantsEnabled?: boolean;
   nearPowerPlantsRadiusMiles?: number;
+  powerPlantSectorFilter?: 'all' | 'independent' | 'electric_utility' | 'commercial' | 'other';
   filteredSources?: ReadonlySet<string>;
   enabledCountries?: ReadonlySet<string>;
   filteredStatuses?: ReadonlySet<string>;
@@ -81,6 +82,7 @@ export function useAIDataCenters({
   enabled,
   nearPowerPlantsEnabled = false,
   nearPowerPlantsRadiusMiles,
+  powerPlantSectorFilter = 'all',
   filteredSources,
   enabledCountries,
   filteredStatuses,
@@ -104,6 +106,7 @@ export function useAIDataCenters({
     if (sourceKey) params.set('sources', sourceKey);
     if (countryKey) params.set('countries', countryKey);
     if (statusKey) params.set('statuses', statusKey);
+    if (powerPlantSectorFilter !== 'all') params.set('sector', powerPlantSectorFilter);
     appendNumberParam(params, 'minCapacity', minPowerOutput);
     appendNumberParam(params, 'maxCapacity', maxPowerOutput);
     appendNumberParam(params, 'minCapacityFactor', minCapacityFactor);
@@ -118,6 +121,7 @@ export function useAIDataCenters({
     minPowerOutput,
     nearPowerPlantsEnabled,
     nearPowerPlantsRadiusMiles,
+    powerPlantSectorFilter,
     sourceKey,
     statusKey,
   ]);
