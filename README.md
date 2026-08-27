@@ -124,6 +124,7 @@ To get the project up and running locally:
     Create a local `.env` file from `.env.example`. Do not commit `.env`.
     You will need a dedicated public Mapbox token in `VITE_MAPBOX_TOKEN`.
     Restrict that token in Mapbox to the production and preview domains that serve this app.
+    Email-based login requires `AUTH_JWT_SECRET`, plus `HELIOS_EMAIL_PASSWORDS` and/or Supabase access-control variables.
 4.  **Run in development mode:**
     ```bash
     npm run dev
@@ -151,18 +152,26 @@ Remember to consult the `package.json` for all available scripts.
 - Store server-side data URLs in Vercel environment variables such as `GLOBAL_POWER_PLANT_DB_S3_URL`, `US_EIA_PLANTS_CSV_S3_URL`, `HIFLD_S3_URL`, `FIBER_OVERVIEW_S3_URL`, `FIBER_TILES_S3_URL`, and `AI_DATA_CENTERS_S3_URL`.
 - Do not expose S3 bucket URLs through `VITE_*` variables or frontend code.
 - Set `ALLOWED_ORIGINS` in production to the approved app domains.
+- Set a dedicated `AUTH_JWT_SECRET` for session tokens and a separate `USAGE_IP_HASH_SECRET` for usage-tracking IP hashes.
 - After deploying a restricted replacement Mapbox token and verifying the map works, revoke the old Mapbox token.
 - Rotate any secrets that were previously present in tracked `.env` history.
+- Shared password-only login is no longer supported by itself; users must sign in with an email so bookmarks and usage tracking can be tied to an account.
 
 ## Map Usage Tracking
 
 Run `supabase-map-usage-tracking.sql` in the Supabase SQL editor to enable login and active-user tracking.
 
 - Successful email logins are written to `map_login_events`.
-- Signed-in users send a lightweight heartbeat to `/api/usage/heartbeat` once per minute.
+- Signed-in users send a lightweight heartbeat to `/api/usage/heartbeat` every three minutes while the browser tab is visible.
 - `map_user_activity` stores the latest activity timestamp per email.
 - `map_active_users` shows users seen in the last five minutes.
-- The app stores a hashed IP value and user agent for security review; it does not store passwords or auth tokens.
+- The app stores a user agent and a hashed IP value when `USAGE_IP_HASH_SECRET` is configured; it does not store passwords or auth tokens.
+- Login events are retained for 90 days by the scheduled cleanup in `supabase-map-usage-tracking.sql`.
+
+## Current PR Notes
+
+- The map controls side panel can be collapsed after filters are selected.
+- Fiber overview cables render starting at zoom level 3, so they are visible from farther out.
 
 Useful Supabase checks:
 

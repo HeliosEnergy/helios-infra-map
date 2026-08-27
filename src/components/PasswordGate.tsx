@@ -13,6 +13,8 @@ type PasswordGateProps = {
   children: React.ReactNode;
 };
 
+const HEARTBEAT_INTERVAL_MS = 3 * 60_000;
+
 const PasswordGate = ({ children }: PasswordGateProps) => {
   const [email, setEmail] = useState('');
   const [input, setInput] = useState('');
@@ -145,6 +147,8 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     if (!isAuthenticated) return;
 
     const sendHeartbeat = async () => {
+      if (document.visibilityState !== 'visible') return;
+
       try {
         await authenticatedFetchWithToken('/api/usage/heartbeat', { method: 'POST' });
       } catch {
@@ -153,8 +157,18 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     };
 
     sendHeartbeat();
-    const intervalId = window.setInterval(sendHeartbeat, 60_000);
-    return () => window.clearInterval(intervalId);
+    const intervalId = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [isAuthenticated, authToken]);
 
   const handleRequestAccess = async () => {

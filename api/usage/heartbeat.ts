@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const email = getTrackableEmail(session.sub);
   if (!email) {
-    return res.status(400).json({ error: 'Email-authenticated session is required for usage tracking.' });
+    return res.status(204).end();
   }
 
   try {

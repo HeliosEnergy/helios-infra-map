@@ -15,8 +15,8 @@ const getClientIp = (req) => {
 
 const hashIp = (req) => {
   const ip = getClientIp(req);
-  const secret = process.env.AUTH_JWT_SECRET || process.env.APP_PASSWORD || 'helios-infra-map';
-  if (!ip) return null;
+  const secret = process.env.USAGE_IP_HASH_SECRET || '';
+  if (!ip || !secret) return null;
   return crypto.createHmac('sha256', secret).update(ip).digest('hex');
 };
 
@@ -37,18 +37,27 @@ export const touchMapUserActivity = async ({ email, req, markLogin = false }) =>
   if (!normalizedEmail) return { tracked: false };
 
   const now = new Date().toISOString();
+  const ipHash = hashIp(req);
+  const userAgent = getUserAgent(req);
+  const body = {
+    email: normalizedEmail,
+    last_seen_at: now,
+    last_login_at: markLogin ? now : undefined,
+    updated_at: now,
+  };
+
+  if (ipHash) {
+    body.last_ip_hash = ipHash;
+  }
+  if (userAgent) {
+    body.last_user_agent = userAgent;
+  }
+
   await supabaseFetch('map_user_activity', {
     method: 'POST',
     query: 'on_conflict=email',
     prefer: 'resolution=merge-duplicates,return=minimal',
-    body: {
-      email: normalizedEmail,
-      last_seen_at: now,
-      last_login_at: markLogin ? now : undefined,
-      last_ip_hash: hashIp(req),
-      last_user_agent: getUserAgent(req),
-      updated_at: now,
-    },
+    body,
   });
 
   return { tracked: true };
@@ -58,18 +67,20 @@ export const recordMapLoginSuccess = async ({ email, req, authMethod }) => {
   const normalizedEmail = getTrackableEmail(email);
   if (!normalizedEmail) return { tracked: false };
 
-  await supabaseFetch('map_login_events', {
-    method: 'POST',
-    prefer: 'return=minimal',
-    body: {
-      email: normalizedEmail,
-      event_type: 'login_success',
-      auth_method: authMethod || null,
-      ip_hash: hashIp(req),
-      user_agent: getUserAgent(req),
-    },
-  });
+  await Promise.all([
+    supabaseFetch('map_login_events', {
+      method: 'POST',
+      prefer: 'return=minimal',
+      body: {
+        email: normalizedEmail,
+        event_type: 'login_success',
+        auth_method: authMethod || null,
+        ip_hash: hashIp(req),
+        user_agent: getUserAgent(req),
+      },
+    }),
+    touchMapUserActivity({ email: normalizedEmail, req, markLogin: true }),
+  ]);
 
-  await touchMapUserActivity({ email: normalizedEmail, req, markLogin: true });
   return { tracked: true };
 };

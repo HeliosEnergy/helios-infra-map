@@ -66,6 +66,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!isAuthConfigured()) {
+    return res.status(503).json({
+      error: 'Server auth is not configured.',
+    });
+  }
+
   const body = parseBody(req);
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
