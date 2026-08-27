@@ -14,7 +14,7 @@ const assertSupabaseConfigured = () => {
 
 const buildSupabaseUrl = (path, query = '') => `${getSupabaseUrl()}/rest/v1/${path}${query ? `?${query}` : ''}`;
 
-export const supabaseFetch = async (path, { method = 'GET', query = '', body } = {}) => {
+export const supabaseFetch = async (path, { method = 'GET', query = '', body, prefer = 'return=representation' } = {}) => {
   assertSupabaseConfigured();
   const response = await fetch(buildSupabaseUrl(path, query), {
     method,
@@ -22,7 +22,7 @@ export const supabaseFetch = async (path, { method = 'GET', query = '', body } =
       apikey: getSupabaseServiceRoleKey(),
       Authorization: `Bearer ${getSupabaseServiceRoleKey()}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=representation',
+      Prefer: prefer,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -33,7 +33,10 @@ export const supabaseFetch = async (path, { method = 'GET', query = '', body } =
   }
 
   if (response.status === 204) return null;
-  return response.json();
+
+  const text = await response.text();
+  if (!text) return null;
+  return JSON.parse(text);
 };
 
 const nowIso = () => new Date().toISOString();

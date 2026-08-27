@@ -13,6 +13,8 @@ type PasswordGateProps = {
   children: React.ReactNode;
 };
 
+const HEARTBEAT_INTERVAL_MS = 3 * 60_000;
+
 const PasswordGate = ({ children }: PasswordGateProps) => {
   const [email, setEmail] = useState('');
   const [input, setInput] = useState('');
@@ -23,6 +25,7 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const isGateEnabled = true;
+  const isAuthenticated = isUnlocked && !!authToken;
 
   const handleLogout = useCallback(() => {
     clearAuthToken();
@@ -140,6 +143,34 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
     }
   };
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const sendHeartbeat = async () => {
+      if (document.visibilityState !== 'visible') return;
+
+      try {
+        await authenticatedFetchWithToken('/api/usage/heartbeat', { method: 'POST' });
+      } catch {
+        // Usage tracking should never interrupt the map experience.
+      }
+    };
+
+    sendHeartbeat();
+    const intervalId = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, authToken]);
+
   const handleRequestAccess = async () => {
     setError('');
     setInfo('');
@@ -208,8 +239,6 @@ const PasswordGate = ({ children }: PasswordGateProps) => {
       </div>
     </div>
   );
-
-  const isAuthenticated = isUnlocked && !!authToken;
 
   return (
     <PasswordGateProvider

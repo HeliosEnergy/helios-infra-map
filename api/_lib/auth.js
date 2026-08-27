@@ -23,9 +23,6 @@ const parsePasswordList = (raw) => {
     .filter(Boolean);
 };
 
-const getConfiguredPasswords = () =>
-  parsePasswordList(process.env.APP_PASSWORDS || process.env.APP_PASSWORD || process.env.VITE_APP_PASSWORD);
-
 const getHeliosEmailPasswords = () =>
   parsePasswordList(process.env.HELIOS_EMAIL_PASSWORDS || process.env.HELIOS_EMAIL_PASSWORD);
 
@@ -47,13 +44,7 @@ const timingSafeEqual = (a, b) => {
 
 export const isAuthConfigured = () =>
   getJwtSecret().length > 0 &&
-  (getConfiguredPasswords().length > 0 || getHeliosEmailPasswords().length > 0 || isEmailAccessConfigured());
-
-export const isPasswordValid = (candidate) => {
-  const passwords = getConfiguredPasswords();
-  if (passwords.length === 0) return false;
-  return passwords.some((password) => timingSafeEqual(password, candidate));
-};
+  (getHeliosEmailPasswords().length > 0 || isEmailAccessConfigured());
 
 export const isHeliosEmailLoginValid = (email, candidatePassword) => {
   const normalizedEmail = String(email || '').trim().toLowerCase();
